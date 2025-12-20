@@ -50,7 +50,7 @@ bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
 
   // check defensively
   if (!m_logFile.is_open()) {
-    coututil::errorln("Log file could not be opened");
+    coututil::errorln("Log file could not be opened: " + filePath);
     return false;
   }
 
@@ -107,7 +107,7 @@ std::string Logger::getTime() {
 #endif
 
     std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y.%m.%d-%H:%M:%S");
+    oss << std::put_time(&tm, "%Y.%m.%d-%H.%M.%S");
     return oss.str();
 }
 
