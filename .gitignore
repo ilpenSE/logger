@@ -1,7 +1,8 @@
 build
-build/
+
+build-linux
+build-win
 
 logs
-logs/
 
 usage/app

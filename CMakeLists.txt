@@ -13,8 +13,18 @@ target_include_directories(logger PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# DLL export macro
 target_compile_definitions(logger PRIVATE LOGGER_BUILD)
 
-# Linux: liblogger.so
-# Windows: logger.dll
+# Linux
+if(UNIX AND NOT APPLE)
+    target_compile_options(logger PRIVATE -fvisibility=hidden)
+endif()
+
+# Windows: dll + dll.a
+if(WIN32)
+    set_target_properties(logger PROPERTIES
+        PREFIX ""                         # no liblogger.dll
+        OUTPUT_NAME "logger"              # logger.dll
+    )
+endif()
+
