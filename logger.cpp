@@ -31,6 +31,7 @@ bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
     return false;
   }
 
+  // tryna create if logs folder doesnt exist
   if (!dirExists) {
     if (!fs::create_directories(logsDir)) {
       coututil::errorln("Logs folder cannot be created!");

@@ -13,7 +13,7 @@ target_include_directories(logger PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# DLL export macro için
+# DLL export macro
 target_compile_definitions(logger PRIVATE LOGGER_BUILD)
 
 # Linux: liblogger.so

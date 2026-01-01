@@ -2,7 +2,10 @@
 #include "logger.hpp"
 
 int logger_init(const char* logs_dir, int use_local_time) {
-    return Logger::instance().initialize(logs_dir, use_local_time);
+    return Logger::instance().initialize(
+        logs_dir ? logs_dir : "logs/",
+        use_local_time != 0
+        );
 }
 
 int logger_log_info(const char* msg) {

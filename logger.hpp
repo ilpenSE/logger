@@ -39,7 +39,7 @@ class Logger {
     }
     static bool isAlive() { return s_alive; }
 
-    bool initialize(const std::string& logsDir = "logs/", bool isLocalTime = false);
+    bool initialize(const std::string& logsDir, bool isLocalTime);
 
     // log funcs
     bool logInfo(const std::string& msg);
@@ -50,7 +50,7 @@ class Logger {
     bool logPrivate(const std::string& msg, const std::string& level);
     std::string getTime();
 
-    // logger vars
+    // logger vars and configs
     static bool s_alive;
     std::ofstream m_logFile;
     static bool m_isLocalTime;

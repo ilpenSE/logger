@@ -3,33 +3,44 @@
 
 #include <sstream>
 #include <string>
-#include "logger.hpp"
+#include "logger.h"
 
 class LoggerStream {
-public:
-  using LogFunc = bool (Logger::*)(const std::string&);
+ public:
+  using LogFunc = int (*)(const char*);
 
-  explicit LoggerStream(LogFunc logFunc)
-        : m_logFunc(logFunc) {}
+  explicit LoggerStream(LogFunc fn)
+      : m_fn(fn) {}
 
   ~LoggerStream() {
-    if (!m_buffer.str().empty() && Logger::isAlive()) {
-      (Logger::instance().*m_logFunc)(m_buffer.str());
+    const std::string s = m_buffer.str();
+    if (!s.empty()) {
+      m_fn(s.c_str());
     }
   }
 
   template <typename T>
   LoggerStream& operator<<(const T& value) {
-    m_buffer << value;
+    m_buffer << value << m_delimiter;
     return *this;
   }
-private:
+
+    // support for QStrings
+# ifdef QT_CORE_LIB
+# include <QString>
+  LoggerStream& operator<<(const QString& value) {
+    m_buffer << value.toStdString() << m_delimiter;
+    return *this;
+  }
+# endif
+ private:
   std::ostringstream m_buffer;
-  LogFunc m_logFunc;
+  const char m_delimiter = ' ';
+  LogFunc m_fn;
 };
 
-#define linfo LoggerStream(&Logger::logInfo)
-#define lerror LoggerStream(&Logger::logError)
-#define lwarning LoggerStream(&Logger::logWarning)
+#define linfo    LoggerStream(logger_log_info)
+#define lerror   LoggerStream(logger_log_error)
+#define lwarning LoggerStream(logger_log_warning)
 
-#endif // LOGGERSTREAM_HPP
+#endif

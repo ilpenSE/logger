@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  linfo << "Hello World!";
+  linfo << "Hello" << "World!";
   lerror << "Some error occured";
   lwarning << "Some warning";
   return 0;

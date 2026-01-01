@@ -21,12 +21,21 @@ class LoggerStream {
 
   template <typename T>
   LoggerStream& operator<<(const T& value) {
-    m_buffer << value;
+    m_buffer << value << m_delimiter;
     return *this;
   }
 
+    // support for QStrings
+# ifdef QT_CORE_LIB
+# include <QString>
+  LoggerStream& operator<<(const QString& value) {
+    m_buffer << value.toStdString() << m_delimiter;
+    return *this;
+  }
+# endif
  private:
   std::ostringstream m_buffer;
+  const char m_delimiter = ' ';
   LogFunc m_fn;
 };
 
@@ -35,4 +44,3 @@ class LoggerStream {
 #define lwarning LoggerStream(logger_log_warning)
 
 #endif
-
