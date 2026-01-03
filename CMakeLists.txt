@@ -4,27 +4,39 @@ project(loggercpp LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(logger SHARED
+option(ENABLE_LOGGER_VERBOSE "Enable verbose logging in logger" OFF)
+if (ENABLE_LOGGER_VERBOSE)
+  set(LIBNAME "loggerv")
+else()
+  set(LIBNAME "logger")
+endif()
+
+add_library(${LIBNAME} SHARED
     logger.cpp
     logger_api.cpp
 )
 
-target_include_directories(logger PUBLIC
+target_include_directories(${LIBNAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(logger PRIVATE LOGGER_BUILD)
+target_compile_definitions(${LIBNAME} PRIVATE LOGGER_BUILD)
+
+# add LOGGER_VERBOSE macro
+if (ENABLE_LOGGER_VERBOSE)
+  target_compile_definitions(${LIBNAME} PRIVATE LOGGER_VERBOSE)
+endif()
 
 # Linux
 if(UNIX AND NOT APPLE)
-    target_compile_options(logger PRIVATE -fvisibility=hidden)
+  target_compile_options(${LIBNAME} PRIVATE -fvisibility=hidden)
 endif()
 
 # Windows: dll + dll.a
 if(WIN32)
-    set_target_properties(logger PROPERTIES
+  set_target_properties(${LIBNAME} PROPERTIES
         PREFIX ""                         # no liblogger.dll
-        OUTPUT_NAME "logger"              # logger.dll
+        OUTPUT_NAME ${LIBNAME}              # logger.dll
     )
 endif()
 

@@ -54,6 +54,10 @@ bool Logger::initialize(const std::string& logsDir,
 // main logging func
 bool Logger::logPrivate(const std::string& msg, const std::string& level) {
   std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
+  if (!s_alive) {
+    lgerror("Logger destructed!");
+    return false;
+  }
 
   std::string message = getTime() + " [" + level + "] " + msg;
   lgprint(message);

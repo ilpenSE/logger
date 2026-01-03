@@ -3,23 +3,23 @@
 
 /*
   PURE C++ LOGGER MEYERS SINGLETON
+  Supports thread-safe logging
+  Log messages like this: 2026.01.03-15.41.46.171 [INFO] Message here
+  Log files like this: 2026.01.03-15.41.46.171.log
 
-  Macros.hpp has pre-defined macros without any paranthesis
+  Log functions prints logs into standart output (std::cout) and m_logFile (std::ofstream)
+   - no matter error, warning and info
 
-  Usage:
-    #include "macros.hpp" // -> FOR MACROS
-    #include "logger.hpp" // -> FOR INIT
-    int main() {
-      std::string logs_dir = "logs/"; // -> IT HAS TO BE DIRECTORY
-      
-      Logger::instance().initialize(logs_dir, true); // -> initializes with logs and isLocalTime, REQUIRED
-                                               // you can check its return value:
-                                               // bool isLoggerInitialized = Logger::instance().initialize(logs_dir);
-                                               // if (!isLoggerInitialized) {
-                                               //   throw std::runtime_error("Failed to initialize logger");
-                                               // }
-      linfo << "Hello World!";
-    }
+  Configs:
+  isLocalTime: if true, uses your local time for timestamp
+  shouldThrowError: if true, throws errors on logger class exceptions (not your logError calls)
+
+  When destruct() method is called, it closes file and set s_alive to be false. And if s_alive = false, you just cannot use log functions.
+
+  To use this logger, you firstly have to include logger.h (externed to C) and call lg_init (which calls Logger::instance().initialize())
+  And then, you can log some infos, errors and warnings.
+  At the end, use destruct() to safely destruct the Logger.
+  Since it has destruct(), you can always manually manage it in your destructing logic in your app or something.
 */
 
 #include <fstream>

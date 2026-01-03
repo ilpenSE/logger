@@ -1,8 +1,12 @@
+# Linux builds
 build
-build-linux
+buildv
+
+# Windows builds
 build-win
+buildv-win
 
+# Other stuff
 logs
-
 usage/app
-app
+usage/appv

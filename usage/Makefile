@@ -1,9 +1,19 @@
 CXX := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -I.
-LDFLAGS := -L. -llogger
+LDFLAGS := -L.
+
+VERBOSE ?= 0   # default 0
+
+ifeq ($(VERBOSE),1)
+	TARGET := appv
+	LDFLAGS += -lloggerv
+else
+	TARGET := app
+	LDFLAGS += -llogger
+endif
+
 RPATH := -Wl,-rpath,'$$ORIGIN'
 
-TARGET := app
 SRC := main.cpp
 
 all: $(TARGET)
@@ -15,3 +25,4 @@ clean:
 	rm -f $(TARGET)
 
 .PHONY: all clean
+

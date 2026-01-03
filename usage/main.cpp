@@ -20,19 +20,16 @@ void log_something(int i) {
   lg_info("Hello from API!");
 }
 
-int main(int argc, char** argv) {
-  std::string path = "logs";
-  int isLocalTime = 1;
-  if (argc >= 3) {
-    path = argv[1];
-    isLocalTime = (std::string(argv[2]) == "1");
+void destruct_test() {
+  linfo << "Log before destruct";
+  if (!lg_destruct()) {
+    std::cerr << "somehow logger destruct failed\n";
+    return;
   }
+  linfo << "Log after destruct";
+}
 
-  if (!lg_init(path.c_str(), isLocalTime, true)) {
-    std::cerr << "[MAIN] Logger init failed\n";
-    return -1;
-  }
-
+void simple_test() {
   // you can use binary op in c++ with loggerstream.hpp
   linfo << "Hello" << "World!";
   lerror << "Some error occured";
@@ -42,7 +39,9 @@ int main(int argc, char** argv) {
   lg_info("info from api");
   lg_error("error from api");
   lg_warn("warning from api");
+}
 
+void multi_thread() {
   // multi-thread usage
   // since this is thread-safe logger, the logs wont break
   std::thread t1(log_something, -1);
@@ -50,7 +49,9 @@ int main(int argc, char** argv) {
 
   t1.join();
   t2.join();
+}
 
+void stress_test() {
   // stress test (1000 thread)
   constexpr int THREAD_COUNT = 1000;
 
@@ -69,9 +70,67 @@ int main(int argc, char** argv) {
   // print elapsed time
   std::chrono::duration<double> diff = end - start;
   std::cout << "Elapsed time: " << diff.count() << " s\n";
+}
 
-  if (!lg_destruct()) {
-    std::cerr << "logger cannot be destructed\n";
+int main(int argc, char** argv) {
+  std::string path = "logs";
+  int isLocalTime = 1;
+  if (argc >= 3) {
+    path = argv[1];
+    isLocalTime = (std::string(argv[2]) == "1");
   }
+
+  if (!lg_init(path.c_str(), isLocalTime, true)) {
+    std::cerr << "[MAIN] Logger init failed\n";
+    return -1;
+  }
+
+  std::cout << "====== LOGGER USAGE TEST ======\n";
+  std::cout << "Choose a test:\n";
+  std::cout << "[0] Simple Test\n";
+  std::cout << "[1] Multi-thread Test\n";
+  std::cout << "[2] Stress Test\n";
+  std::cout << "[3] Use-after-destruct Test\n";
+  std::cout << "[4] Exit\n";
+
+  int op = 0;
+  while (1) {
+    if (!(std::cin >> op)) {
+      std::cout << "Please enter a valid operation!\n";
+      std::cin.clear();
+      std::cin.ignore(10000, '\n');
+      continue;
+    }
+
+    if (op < 0 || op > 4) {
+      std::cout << "Please enter a valid operation!\n";
+      continue;
+    }
+
+    switch (op) {
+      case 0:
+        simple_test();
+        break;
+      case 1:
+        multi_thread();
+        break;
+      case 2:
+        stress_test();
+        break;
+      case 3:
+        destruct_test();
+        break;
+      default:
+        goto exit;
+        break;
+    }
+  }
+
+exit:
+  if (!lg_destruct()) {
+    std::cerr << "[MAIN] Logger destruct failed\n";
+    return -1;
+  }
+
   return 0;
 }
