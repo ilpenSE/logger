@@ -1,6 +1,11 @@
 # My Logger
 
-## To Build,
+This Logger supports apple systems (APPLE), windows (WIN32) and linux
+You can build and generate `.so`, `.dll`/`.dll.a` and `.dylib`
+
+It is written in C++, exported via `extern "C"` if you're not using C.
+
+## To Build
 
 On current directory
 ```bash

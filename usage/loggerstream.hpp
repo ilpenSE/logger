@@ -39,8 +39,8 @@ class LoggerStream {
   LogFunc m_fn;
 };
 
-#define linfo    LoggerStream(logger_log_info)
-#define lerror   LoggerStream(logger_log_error)
-#define lwarning LoggerStream(logger_log_warning)
+#define linfo    LoggerStream(lg_info)
+#define lerror   LoggerStream(lg_error)
+#define lwarning LoggerStream(lg_warn)
 
 #endif

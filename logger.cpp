@@ -5,40 +5,33 @@
 #include <sstream>
 #include <string>
 #include <ctime>
-#include <iostream>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
-bool Logger::s_alive = false;
-bool Logger::m_isLocalTime = false;
-
-namespace coututil {
-  void println(const std::string& msg) {
-    std::cout << msg << std::endl;
-  }
-
-  void errorln(const std::string& msg) {
-    std::cout << "ERROR: " << msg << std::endl;
-  }
-}
-
 // initialization, opening file
-bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
+bool Logger::initialize(const std::string& logsDir,
+    bool isLocalTime, bool shouldThrowError) {
+  std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
+                                         // to prevent race-conditions
+  // set configs
+  m_shouldThrowError = shouldThrowError;
+  m_isLocalTime = isLocalTime;
+
   // check if log dir exists and a directory
   bool dirExists = fs::exists(logsDir);
   if (dirExists && !fs::is_directory(logsDir)) {
-    coututil::errorln("Given path is NOT a directory");
+    lgerror("Given path is NOT a directory");
     return false;
   }
 
   // tryna create if logs folder doesnt exist
   if (!dirExists) {
     if (!fs::create_directories(logsDir)) {
-      coututil::errorln("Logs folder cannot be created!");
+      lgerror("Logs folder cannot be created!");
       return false;
     }
   }
-  m_isLocalTime = isLocalTime;
 
   // defining file name and trailing slash fix
   std::string fixedLogsDir = logsDir;
@@ -51,7 +44,7 @@ bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
 
   // check defensively
   if (!m_logFile.is_open()) {
-    coututil::errorln("Log file could not be opened: " + filePath);
+    lgerror("Log file could not be opened: " + filePath);
     return false;
   }
 
@@ -60,12 +53,14 @@ bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
 
 // main logging func
 bool Logger::logPrivate(const std::string& msg, const std::string& level) {
+  std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
+
   std::string message = getTime() + " [" + level + "] " + msg;
-  coututil::println(message);
+  lgprint(message);
   m_logFile << message << '\n';
 
   if (!m_logFile.good()) {
-    coututil::errorln("Logging failed!");
+    lgerror("Logging failed!");
     return false;
   }
   return true;
@@ -89,33 +84,60 @@ bool Logger::logWarning(const std::string& msg) {
 }
 
 // timestamp wrapper - platform independent
+// milliseconds sensitivity
 std::string Logger::getTime() {
-    std::time_t t = std::time(nullptr);
+    using namespace std::chrono;
+
+    auto now = system_clock::now(); // ms-level
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+
+    std::time_t t = system_clock::to_time_t(now); // reduce to seconds
     std::tm tm{};
 
 #if defined(_WIN32)
-    if (!m_isLocalTime) {
-        gmtime_s(&tm, &t);
-    } else {
+    if (m_isLocalTime) {
         localtime_s(&tm, &t);
+    } else {
+        gmtime_s(&tm, &t);
     }
 #else
-    if (!m_isLocalTime) {
-        gmtime_r(&t, &tm);
-    } else {
+    if (m_isLocalTime) {
         localtime_r(&t, &tm);
+    } else {
+        gmtime_r(&t, &tm);
     }
 #endif
 
     std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y.%m.%d-%H.%M.%S");
+    oss << std::put_time(&tm, "%Y.%m.%d-%H.%M.%S")
+        << '.' << std::setfill('0') << std::setw(3) << ms.count();
+
     return oss.str();
 }
 
+
 // set alive false and close the file
-Logger::~Logger() {
+// DO NOT use destructor, instead use seperate func for destructing
+bool Logger::destruct() noexcept {
+  std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
+
+  // file already closed
+  // if file is open but alive is false, logger is in weird state and then we normalize it
+  if (!m_logFile.is_open()) {
+    s_alive = false;
+    return true;
+  }
+
+  m_logFile.flush();
+  m_logFile.close();
+
+  if (m_logFile.is_open())
+    return false;
+
   s_alive = false;
-  if (m_logFile.is_open() && m_logFile.good()) m_logFile.close();
+  return true;
 }
+
+Logger::~Logger() {}
 
 Logger::Logger() { s_alive = true; }
