@@ -50,7 +50,7 @@ private:
   std::string getTime();
 
   // logger vars and configs
-  bool s_alive = false;
+  static bool s_alive;
   bool m_isLocalTime = false;
   bool m_shouldThrowError = true;
   std::ofstream m_logFile;
@@ -58,8 +58,8 @@ private:
   std::mutex mtx;
 
   // singleton configs
-  explicit Logger();
-  ~Logger();
+  explicit Logger() { s_alive = true; };
+  ~Logger() {};
   Logger(const Logger&) = delete;
   Logger& operator=(const Logger&) = delete;
 

@@ -4,36 +4,33 @@
 #include <vector>
 #include <chrono>
 
+#define LOGGER_VERBOSE_LIB
+#define LOGGER_IMPLEMENTATION
 #include "logger.h"
 #include "loggerstream.hpp"
 
 /**
-This is NOT a JSON logger, its human-readable logger
-Usage is provided below.
-
-it no longer expects trailing slash, if its not provided, it should generate
-if isLocalTime set to 1, it fetches your time but if you set it false it fetches UTC datetime
+	 Usage in /usage/main.cpp, but it doesnt linked with liblogger.so or smth
 */
-
 void log_something(int i) {
-  linfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
+  sinfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
   lg_info("Hello from API!");
 }
 
 void destruct_test() {
-  linfo << "Log before destruct";
+  sinfo << "Log before destruct";
   if (!lg_destruct()) {
     std::cerr << "somehow logger destruct failed\n";
     return;
   }
-  linfo << "Log after destruct";
+  sinfo << "Log after destruct";
 }
 
 void simple_test() {
   // you can use binary op in c++ with loggerstream.hpp
-  linfo << "Hello" << "World!";
-  lerr << "Some error occured";
-  lwarn << "Some warning";
+  sinfo << "Hello" << "World!";
+  serr << "Some error occured";
+  swarn << "Some warning";
 
   // also you can use classic logger.h api (works on every other language)
   lg_info("info from api");

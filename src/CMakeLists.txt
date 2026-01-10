@@ -4,7 +4,7 @@ project(loggercpp LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(ENABLE_LOGGER_VERBOSE "Enable verbose logging in logger" OFF)
+option(ENABLE_LOGGER_VERBOSE "Enable verbose logger library" OFF)
 if (ENABLE_LOGGER_VERBOSE)
   set(LIBNAME "loggerv")
 else()
@@ -24,7 +24,7 @@ target_compile_definitions(${LIBNAME} PRIVATE LOGGER_BUILD)
 
 # add LOGGER_VERBOSE macro
 if (ENABLE_LOGGER_VERBOSE)
-  target_compile_definitions(${LIBNAME} PRIVATE LOGGER_VERBOSE)
+  target_compile_definitions(${LIBNAME} PRIVATE LOGGER_VERBOSE_LIB)
 endif()
 
 # Linux
@@ -35,8 +35,8 @@ endif()
 # Windows: dll + dll.a
 if(WIN32)
   set_target_properties(${LIBNAME} PROPERTIES
-        PREFIX ""                         # no liblogger.dll
-        OUTPUT_NAME ${LIBNAME}              # logger.dll
+        PREFIX ""              # no liblogger.dll
+        OUTPUT_NAME ${LIBNAME} # logger.dll
     )
 endif()
 

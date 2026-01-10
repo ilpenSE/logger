@@ -1,12 +1,8 @@
-# Linux builds
-build
-buildv
-
-# Windows builds
-build-win
-buildv-win
+# All builds
+src/build
 
 # Other stuff
 logs
-usage/app
-usage/appv
+app
+appv
+stbstyle/main

@@ -9,6 +9,8 @@
 
 namespace fs = std::filesystem;
 
+bool Logger::s_alive = false;
+
 // initialization, opening file
 bool Logger::initialize(const std::string& logsDir,
     bool isLocalTime, bool shouldThrowError) {
@@ -90,35 +92,34 @@ bool Logger::logWarning(const std::string& msg) {
 // timestamp wrapper - platform independent
 // milliseconds sensitivity
 std::string Logger::getTime() {
-    using namespace std::chrono;
+	using namespace std::chrono;
 
-    auto now = system_clock::now(); // ms-level
-    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+	auto now = system_clock::now(); // ms-level
+	auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
 
-    std::time_t t = system_clock::to_time_t(now); // reduce to seconds
-    std::tm tm{};
+	std::time_t t = system_clock::to_time_t(now); // reduce to seconds
+	std::tm tm{};
 
 #if defined(_WIN32)
-    if (m_isLocalTime) {
-        localtime_s(&tm, &t);
-    } else {
-        gmtime_s(&tm, &t);
-    }
+	if (m_isLocalTime) {
+		localtime_s(&tm, &t);
+	} else {
+		gmtime_s(&tm, &t);
+	}
 #else
-    if (m_isLocalTime) {
-        localtime_r(&t, &tm);
-    } else {
-        gmtime_r(&t, &tm);
-    }
+	if (m_isLocalTime) {
+		localtime_r(&t, &tm);
+	} else {
+		gmtime_r(&t, &tm);
+	}
 #endif
 
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y.%m.%d-%H.%M.%S")
-        << '.' << std::setfill('0') << std::setw(3) << ms.count();
+	std::ostringstream oss;
+	oss << std::put_time(&tm, "%Y.%m.%d-%H.%M.%S")
+			<< '.' << std::setfill('0') << std::setw(3) << ms.count();
 
-    return oss.str();
+	return oss.str();
 }
-
 
 // set alive false and close the file
 // DO NOT use destructor, instead use seperate func for destructing
@@ -141,7 +142,3 @@ bool Logger::destruct() noexcept {
   s_alive = false;
   return true;
 }
-
-Logger::~Logger() {}
-
-Logger::Logger() { s_alive = true; }

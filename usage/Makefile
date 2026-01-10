@@ -1,18 +1,17 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -I.
-LDFLAGS := -L.
+CXXFLAGS := -std=c++17 -Wall -Wextra -I../include
 
-VERBOSE ?= 0   # default 0
+VERBOSE ?= 0
 
 ifeq ($(VERBOSE),1)
+	LDFLAGS := -L../libs/verbosed -lloggerv
 	TARGET := appv
-	LDFLAGS += -lloggerv
+	RPATH := -Wl,-rpath,'$$ORIGIN/../libs/verbosed'
 else
+	LDFLAGS := -L../libs -llogger
 	TARGET := app
-	LDFLAGS += -llogger
+	RPATH := -Wl,-rpath,'$$ORIGIN/../libs'
 endif
-
-RPATH := -Wl,-rpath,'$$ORIGIN'
 
 SRC := main.cpp
 
@@ -25,4 +24,3 @@ clean:
 	rm -f $(TARGET)
 
 .PHONY: all clean
-
