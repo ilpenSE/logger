@@ -10,7 +10,7 @@ It is written in C++, exported via `extern "C"` if you're not using C.
 ## Quick Links
 
 - [Source code (C++)](src/)
-- [Usage and stb style header](stbstyle)
+- [Usage in stb style (C++)](stbstyle)
 - [Usage in C/C++, with dynamic linking](usage/)
 - [Precompiled lib binaries (so/dll)](libs/)
 

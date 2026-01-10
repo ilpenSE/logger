@@ -15,25 +15,36 @@ it no longer expects trailing slash, if its not provided, it should generate
 if isLocalTime set to 1, it fetches your time but if you set it false it fetches UTC datetime
 */
 
+void hello() {
+	std::cout << "====== LOGGER USAGE TEST ======\n";
+  std::cout << "Choose a test:\n";
+  std::cout << "[0] Simple Test\n";
+  std::cout << "[1] Multi-thread Test\n";
+  std::cout << "[2] Stress Test\n";
+  std::cout << "[3] Use-after-destruct Test\n";
+	std::cout << "[4] Print this message\n";
+  std::cout << "[5] Exit\n";
+}
+
 void log_something(int i) {
-  linfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
+  sinfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
   lg_info("Hello from API!");
 }
 
 void destruct_test() {
-  linfo << "Log before destruct";
+  sinfo << "Log before destruct";
   if (!lg_destruct()) {
     std::cerr << "somehow logger destruct failed\n";
     return;
   }
-  linfo << "Log after destruct";
+  sinfo << "Log after destruct";
 }
 
 void simple_test() {
   // you can use binary op in c++ with loggerstream.hpp
-  linfo << "Hello" << "World!";
-  lerr << "Some error occured";
-  lwarn << "Some warning";
+  sinfo << "Hello" << "World!";
+  serr << "Some error occured";
+  swarn << "Some warning";
 
   // also you can use classic logger.h api (works on every other language)
   lg_info("info from api");
@@ -85,13 +96,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  std::cout << "====== LOGGER USAGE TEST ======\n";
-  std::cout << "Choose a test:\n";
-  std::cout << "[0] Simple Test\n";
-  std::cout << "[1] Multi-thread Test\n";
-  std::cout << "[2] Stress Test\n";
-  std::cout << "[3] Use-after-destruct Test\n";
-  std::cout << "[4] Exit\n";
+	hello();
 
   int op = 0;
   while (1) {
@@ -102,27 +107,27 @@ int main(int argc, char** argv) {
       continue;
     }
 
-    if (op < 0 || op > 4) {
-      std::cout << "Please enter a valid operation!\n";
-      continue;
-    }
-
     switch (op) {
-      case 0:
-        simple_test();
-        break;
-      case 1:
-        multi_thread();
-        break;
-      case 2:
-        stress_test();
-        break;
-      case 3:
-        destruct_test();
-        break;
-      default:
-        goto exit;
-        break;
+		case 0:
+			simple_test();
+			break;
+		case 1:
+			multi_thread();
+			break;
+		case 2:
+			stress_test();
+			break;
+		case 3:
+			destruct_test();
+			break;
+		case 4:
+			hello();
+			break;
+		case 5:
+			goto exit;
+		default:
+			std::cout << "Please enter a valid operation!\n";
+			break;
     }
   }
 
@@ -131,6 +136,5 @@ exit:
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }
-
   return 0;
 }

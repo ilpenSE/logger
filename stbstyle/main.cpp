@@ -12,6 +12,18 @@
 /**
 	 Usage in /usage/main.cpp, but it doesnt linked with liblogger.so or smth
 */
+
+void hello() {
+	std::cout << "====== LOGGER USAGE TEST ======\n";
+  std::cout << "Choose a test:\n";
+  std::cout << "[0] Simple Test\n";
+  std::cout << "[1] Multi-thread Test\n";
+  std::cout << "[2] Stress Test\n";
+  std::cout << "[3] Use-after-destruct Test\n";
+	std::cout << "[4] Print this message\n";
+  std::cout << "[5] Exit\n";
+}
+
 void log_something(int i) {
   sinfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
   lg_info("Hello from API!");
@@ -82,13 +94,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  std::cout << "====== LOGGER USAGE TEST ======\n";
-  std::cout << "Choose a test:\n";
-  std::cout << "[0] Simple Test\n";
-  std::cout << "[1] Multi-thread Test\n";
-  std::cout << "[2] Stress Test\n";
-  std::cout << "[3] Use-after-destruct Test\n";
-  std::cout << "[4] Exit\n";
+	hello();
 
   int op = 0;
   while (1) {
@@ -98,28 +104,27 @@ int main(int argc, char** argv) {
       std::cin.ignore(10000, '\n');
       continue;
     }
-
-    if (op < 0 || op > 4) {
-      std::cout << "Please enter a valid operation!\n";
-      continue;
-    }
-
     switch (op) {
-      case 0:
-        simple_test();
-        break;
-      case 1:
-        multi_thread();
-        break;
-      case 2:
-        stress_test();
-        break;
-      case 3:
-        destruct_test();
-        break;
-      default:
-        goto exit;
-        break;
+		case 0:
+			simple_test();
+			break;
+		case 1:
+			multi_thread();
+			break;
+		case 2:
+			stress_test();
+			break;
+		case 3:
+			destruct_test();
+			break;
+		case 4:
+			hello();
+			break;
+		case 5:
+			goto exit;
+		default:
+			std::cout << "Please enter a valid operation!\n";;
+			break;
     }
   }
 
