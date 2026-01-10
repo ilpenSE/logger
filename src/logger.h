@@ -41,7 +41,6 @@ extern "C" {
 #endif // LOGGER_STRIP_PREFIXES
 
 // minify prefix from lg_ to l
-// DO NOT use logger stream if you enable this in C++ (it'll collide)
 #ifdef LOGGER_MINIFY_PREFIXES
   #define llog   lg_log
   #define linfo  lg_info
