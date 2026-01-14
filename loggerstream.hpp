@@ -7,7 +7,7 @@
 
 class LoggerStream {
  public:
-  using LogFunc = int (*)(const char*);
+  using LogFunc = lg_result_t (*)(const char*);
 
   explicit LoggerStream(LogFunc fn)
       : m_fn(fn) {}

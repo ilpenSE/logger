@@ -4,16 +4,10 @@
 #include <vector>
 #include <chrono>
 
+#define LOGGER_IMPLEMENTATION
+#define LOGGER_DEBUG
 #include "logger.h"
 #include "loggerstream.hpp"
-
-/**
-This is NOT a JSON logger, its human-readable logger
-Usage is provided below.
-
-it no longer expects trailing slash, if its not provided, it should generate
-if isLocalTime set to 1, it fetches your time but if you set it false it fetches UTC datetime
-*/
 
 void hello() {
 	std::cout << "====== LOGGER USAGE TEST ======\n";
@@ -91,7 +85,7 @@ int main(int argc, char** argv) {
     isLocalTime = (std::string(argv[2]) == "1");
   }
 
-  if (!lg_init(path.c_str(), isLocalTime, true)) {
+  if (!lg_init(path.c_str(), isLocalTime)) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
@@ -106,7 +100,6 @@ int main(int argc, char** argv) {
       std::cin.ignore(10000, '\n');
       continue;
     }
-
     switch (op) {
 		case 0:
 			simple_test();
@@ -126,7 +119,7 @@ int main(int argc, char** argv) {
 		case 5:
 			goto exit;
 		default:
-			std::cout << "Please enter a valid operation!\n";
+			std::cout << "Please enter a valid operation!\n";;
 			break;
     }
   }
@@ -136,5 +129,6 @@ exit:
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }
+
   return 0;
 }

@@ -1,8 +1,4 @@
-# All builds
-src/build
-
 # Other stuff
 logs
 app
 appv
-stbstyle/main

@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -I../include/stbstyle
+CXXFLAGS := -std=c++17 -Wall -Wextra -I../..
 TARGET := app
 SRC := main.cpp
 

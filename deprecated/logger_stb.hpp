@@ -1,5 +1,5 @@
-#ifndef LOGGER_H_
-#define LOGGER_H_
+#ifndef LOGGER_HPP
+#define LOGGER_HPP
 
 /**
 	 THIS IS STB-STYLE LIBRARY HEADER OF LOGGER. SINCE THIS LOGGER IS WRITTEN IN C++,
@@ -29,10 +29,13 @@
 extern "C" {
 #endif
 
-	static int  lg_init(const char* logs_dir,
-    int use_local_time, int should_throw_error);
+	static int lg_init(const char* logs_dir, int use_local_time);
+	static int lg_destruct(void);
 
-	static int  lg_destruct(void);
+	static int lg_log(const char* msg, const char* level);
+	static int lg_info(const char* msg);
+	static int lg_warn(const char* msg);
+	static int lg_error(const char* msg);
 
 #ifdef __cplusplus
 }
@@ -59,8 +62,8 @@ extern "C" {
 #include <chrono>
 
 // LOGGER.HPP AND LOGGER.CPP MAIN CODE
-#ifndef LOGGER_HPP_
-#define LOGGER_HPP_
+#ifndef LOGGER_CLASS_HPP
+#define LOGGER_CLASS_HPP
 
 /*
   PURE C++ LOGGER MEYERS SINGLETON
@@ -117,12 +120,17 @@ public:
     return true;
 	}
 
-  bool initialize(const std::string& logsDir, bool isLocalTime, bool shouldThrowError) {
-		  std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
-                                         // to prevent race-conditions
+  bool initialize(const std::string& _logsDir, bool isLocalTime) {
+		std::lock_guard<std::mutex> lock(mtx); // LOCK THREAD
+		                                       // to prevent race-conditions
     // set configs
-    m_shouldThrowError = shouldThrowError;
     m_isLocalTime = isLocalTime;
+
+		// defining file name and trailing slash fix
+    std::string logsDir = _logsDir;
+    std::string fileName = getTime() + ".log";
+    if (!_logsDir.empty() && _logsDir.back() != '/' && _logsDir.back() != '\\')
+      logsDir += '/';
 	  
     // check if log dir exists and a directory
     bool dirExists = fs::exists(logsDir);
@@ -138,14 +146,8 @@ public:
         return false;
       }
     }
-	  
-    // defining file name and trailing slash fix
-    std::string fixedLogsDir = logsDir;
-    std::string fileName = getTime() + ".log";
-    if (!logsDir.empty() && logsDir.back() != '/' && logsDir.back() != '\\')
-      fixedLogsDir += '/';
     
-    std::string filePath = fixedLogsDir + fileName;
+    std::string filePath = logsDir + fileName;
     m_logFile.open(filePath.c_str(), std::ios::out | std::ios::app);
 	  
     // check defensively
@@ -225,11 +227,10 @@ private:
     return oss.str();
 	}
 
-  // logger vars and configs
 	// just kindly use c++17 and higher
+  // logger vars and configs
 	inline static bool s_alive = false;
   bool m_isLocalTime = false;
-  bool m_shouldThrowError = true;
   std::ofstream m_logFile;
 
   std::mutex mtx;
@@ -245,47 +246,35 @@ private:
   }
 
   void lgierror(const std::string& msg) {
-    if (m_shouldThrowError) throw std::runtime_error(msg);
-    else std::cerr << "ERROR: " << msg << '\n';
+    std::cerr << "LOGGER RUNTIME ERROR: " << msg << '\n';
   }
 };
 
-#endif // LOGGER_HPP_
+#endif // LOGGER_CLASS_HPP
 
-static int lg_init(const char* logs_dir, int use_local_time,
-											 int should_throw_error) {
+static int lg_init(const char* logs_dir, int use_local_time) {
 	try {
 		return Logger::instance().initialize(
 			logs_dir ? logs_dir : "logs",
-			use_local_time != 0,
-			should_throw_error != 0
+			use_local_time != 0
 			);
 	} catch (const std::exception& e) {
     // swallow logger's runtime exceptions
-    // if LOGGER_VERBOSE_LIB defined, print exception message to std::cerr
-    // you can define it in compile options by using
-    // -DLOGGER_VERBOSE_LIB or target_compile_definitions(logger PRIVATE LOGGER_VERBOSE_LIB)
-#ifdef LOGGER_VERBOSE_LIB
-    const char* msg = e.what();
-    std::cerr << "Runtime Exception occured when initializing the Logger:\n";
-    std::cerr << msg << '\n';
-#endif // LOGGER_VERBOSE_LIB
     return -1;
 	}
 	return 1;
 }
 
+static int  lg_destruct(void) {
+	try {
+    return Logger::instance().destruct();
+  } catch(const std::exception& e) { return -1; }
+}
+
 static int lg_log(const char* msg, const char* level) {
 	try {
     return Logger::instance().log(msg, level);
-  } catch(const std::exception& e) {
-#ifdef LOGGER_VERBOSE_LIB
-    const char* msg = e.what();
-    std::cerr << "Runtime Exception occured when logging:\n";
-    std::cerr << msg << '\n';
-#endif
-    return -1;
-  }
+  } catch(const std::exception& e) { return -1; }
 }
 
 static int lg_info(const char* msg) {
@@ -308,7 +297,6 @@ static int lg_warn(const char* msg) {
 #define info  lg_info
 #define warn  lg_warn
 #define error lg_error
-#define log   lg_log
 #endif // LOGGER_STRIP_PREFIXES
 
 // minify prefix from lg_ to l
@@ -316,25 +304,18 @@ static int lg_warn(const char* msg) {
 #define linfo  lg_info
 #define lwarn  lg_warn
 #define lerror lg_error
-#define llog   lg_log
 #endif // LOGGER_MINIFY_PREFIXES
 
-#endif // LOGGER_PREFIX_MODIFIERS_GUARD
+// do not define llog multiple times
+// btw lg_log's stripped/minified version should be "llog" instead of "log"
+// bcs math.h collides with this
+#if defined(LOGGER_MINIFY_PREFIXES) || defined(LOGGER_STRIP_PREFIXES)
+#define llog lg_log
+#endif // LOGGER_STRIP_PREFIXES OR LOGGER_MINIFY_PREFIXES
 
-static int  lg_destruct(void) {
-	try {
-    return Logger::instance().destruct();
-  } catch(const std::exception& e) {
-#ifdef LOGGER_VERBOSE_LIB
-    const char* msg = e.what();
-    std::cerr << "Runtime Exception occured when destructing the Logger:\n";
-    std::cerr << msg << '\n';
-#endif
-    return -1;
-  }
-}
+#endif // LOGGER_PREFIX_MODIFIERS_GUARD
 
 #endif // LOGGER_IMPLEMENTATION
 #endif // __cplusplus
 
-#endif // LOGGER_H_
+#endif // LOGGER_HPP

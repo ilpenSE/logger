@@ -1,79 +1,25 @@
-#include <stdio.h>
-
-#define LOGGER_STRIP_PREFIXES
-#define LOGGER_MINIFY_PREFIXES
+#define LOGGER_IMPLEMENTATION
+#define LOGGER_DEBUG
 #include "logger.h"
 
-void simple_test() {
-	// straight
-	lg_info("Hello from lg_info!");
-	lg_error("Hello from lg_error!");
-	lg_warn("Hello from lg_warn!");
+#include <stdio.h>
 
-	// stripped
-	info("Hello from stripped info!");
-	error("Hello from stripped error!");
-	warn("Hello from stripped warn!");
-
-	// minified
-	linfo("Hello from minified info!");
-	lerror("Hello from minified error!");
-	lwarn("Hello from minified warn!");
-}
-
-void use_after_destruct() {
-	info("Log before destruct");
-	if (!lg_destruct()) return;
-	info("Log after destruct");
-}
-
-void hello() {
-	printf("======== LOGGER C USAGE ========\n");
-	printf("[0] Simple test\n");
-	printf("[1] Use-After-Destruct test\n");
-	printf("[2] Print this message\n");
-	printf("[3] Exit\n");
-}
-
-int main() {
-	// init logger before using logger
-	if (!lg_init("logs", 1, 1)) {
-		perror("logs init failed bru\n");
+int main(int argc, char** argv) {
+	char* logs_path;
+	if (argc < 2) logs_path = "logs";
+	else logs_path = argv[1];
+	
+	if (!lg_init(logs_path, 1)) {
+		perror("logs init failed");
 		return -1;
 	}
 
-	int op = 0;
-	hello();
-	while (1) {
-		if (!scanf("%d", &op)) {
-			printf("Please enter a valid operation!\n");
-			// invalid entry, clear stdin
-			// this time it wont print please enter a valid op infinitely
-			int c;
-			while ((c = getchar()) != '\n' && c != EOF) { } 
-			continue;
-		}
-		switch(op) {
-		case 0:
-			simple_test();
-			break;
-		case 1:
-			use_after_destruct();
-			break;
-		case 2:
-			hello();
-			break;
-		case 3:
-			goto exit;
-		default:
-			printf("Please enter a valid operation!\n");
-			break;
-		}
-	}
-exit:
-	// always destruct it when you're finished with logger
+	lg_info("stb lets gooo");
+	lg_error("nga err");
+	lg_warn("tame impala's warning");
+
 	if (!lg_destruct()) {
-		perror("logs destruct faile brrrr\n");
+		perror("logger destruct failed");
 		return -1;
 	}
 	return 0;
