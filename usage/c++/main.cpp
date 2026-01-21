@@ -85,7 +85,11 @@ int main(int argc, char** argv) {
     isLocalTime = (std::string(argv[2]) == "1");
   }
 
-  if (!lg_init(path.c_str(), isLocalTime)) {
+	LoggerConfig conf = {
+		.localTime = isLocalTime,
+		.logFormatter = NULL
+	};
+  if (lg_init(path.c_str(), conf) != 1) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
@@ -125,7 +129,7 @@ int main(int argc, char** argv) {
   }
 
 exit:
-  if (!lg_destruct()) {
+  if (lg_destruct() != 1) {
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }

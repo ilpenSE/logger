@@ -12,11 +12,11 @@
 	 #include "logger.h"
 
 	 int main() {
-	 lg_init();
+	 if (lg_init("logs", {.localTime=1, .logFormatter=NULL}) != 1) return 1;
 	 lg_info("Hello, World!");
 	 info("Hello, World!");
 	 linfo("Hello, World!");
-	 lg_destruct();
+	 if (lg_destruct() != 1) return 1;
 	 }
 
 	 AND IF YOU'RE USING IMPLEMENTATION MACRO, YOU DONT HAVE TO DYANAMIC LINK THE LIBRARY
@@ -34,6 +34,10 @@
   #define LOGGER_API __attribute__((visibility("default")))
 #endif // _WIN32
 
+// some global includes here
+#include <stdarg.h>
+#include <stddef.h>
+
 // the logger function results via enums
 typedef enum {
 	LG_FATAL_ERROR = -1, // if this happens, destruct immediatel
@@ -43,63 +47,83 @@ typedef enum {
 	LG_NOT_OPEN_FILE = 3
 } lg_result_t;
 
-/**
+/*
+ * Config struct, this struct can be used in lg_init.
+ * localTime: this members also known as "use_local_time", if it is 1, time is calculated on local timezone
+ * logFormatter: this function describes the logging format. By default, it is like:
+     time level msg
+		 its parameters: time str, level, formatted message, out buffer, out buffer size
+		 returns: status code (1 = success)
+		 btw: you are given by time str, level and formatted message (fmt + va_list'ed)
+		 you can customize it and you have to write your message into out buffer the size of buffer is size
+*/
+typedef struct {
+	int localTime;
+	int (*logFormatter)(const char*, const char*, const char*, char*, size_t);
+} LoggerConfig;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
 	 Main initializer function
 	 @param logs_dir: const char*, Points a directory path
-	   (if not exists, it'll try to create). It can be relative or absolute path.
-	 @param use_local_time: int, Changes behavior of lg_get_time(). If 1 or true, that function
-	   will try to generate time string BY YOUR LOCAL TIME ZONE. If it is false or 0, it'll use
-		 UTC as a convention.
+	 (if not exists, it'll try to create). It can be relative or absolute path.
+	 @param config: LoggerConfig,
+	 localTime: Changes behavior of get_time_str(). If 1 or true, that function
+	 will try to generate time string BY YOUR LOCAL TIME ZONE. If it is false or 0, it'll use
+	 UTC as a convention.
+	 logFormatter: Custom log message formatter function, you are given by time_str that comes from get_time_str, level and formatted message AND output buffer and output buffer's size. Your job is to implement and give this function if you'll use customization and write your message in snprintf. You can make this NULL and it uses default formatting (time_str [level] msg)
 	 @returns if initializition succeed, if it's not, none of the log functions will work.
-	   RECOMMENDED: on your app's entry point, check its return value like if(!lg_init(...))
-		 You dont have to use lg_destruct() if init failed. Because if init failed, is_alive set to be 0
-		 and lg_destruct() simply wont work if logger is sleeping
+	 RECOMMENDED: on your app's entry point, check its return value like if(!lg_init(...))
+	 You dont have to use lg_destruct() if init failed. Because if init failed, is_alive set to be 0
+	 and lg_destruct() simply wont work if logger is sleeping
 */
-LOGGER_API lg_result_t lg_init(const char* logs_dir, int use_local_time);
+LOGGER_API lg_result_t lg_init(const char* logs_dir, LoggerConfig config);
 
-/**
-	 MAY SPAWN RACE CONDITIONS IF YOU DONT KNOW WHAT YOU'RE DOING!
-	 (multiple loggers races about is_alive thingy)
-	 DOES NOT RECOMMENDED TO USE, USE lg_init
-	 Main initializer function but takes extra "is_forced" parameter which determines
-	 that you have forcefully initialize a logger instance at all costs.
-	 Normally, if it is set 0, checks that a logger instance is running (is_alive == 1)
-	 if an instance running, it DOES NOT try to CREATE NEW INSTANCE.
-	 But if you set is_forced to be 1, it doesnt give a fuck about is_alive or any running instances.
-*/
-LOGGER_API lg_result_t lg_init_(const char* logs_dir, int use_local_time, int is_forced);
-
-/**
-	 Forcefully initialize goddamn logger. Wrapper of lg_init_. return lg_init_(..., 1);
- */
-LOGGER_API lg_result_t lg_force_init(const char* logs_dir, int use_local_time);
-
-/**
-	 Destructs logger instance and closes the log file that the instance working on
+/*
+	Destructs logger instance and closes the log file that the instance working on
 */
 LOGGER_API lg_result_t lg_destruct(void);
 
 // returns if logger is alive
 LOGGER_API int lg_is_alive();
 
-/**
-	 Gets time using kernel in this format: %Y.%m.%d-%H.%M.%S.%MS (%MS is millis in 3 digits)
-	 or YYYY.MM.DD-HH.MM.SS.SSS
-	 example: 2026.01.11-21.44.40.255 means January 11th, 2026, 21:44:40 or 9:44:40 pm, ms: 255
-	 If lg_isLocalTime = 0, spits out time in UTC format.
+/*
+	LOG FUNCTIONS, if you have EYES and a BRAIN you can read lg_xxx part and
+	see that which function log in which level.
+	The "lg_log" requires level if you have special levels
+	lg_xxx (except log) is wrapper of lg_log
+	@since 2.1: these functions accept variadic args like in printf
 */
-LOGGER_API char* lg_get_time();
+LOGGER_API lg_result_t lg_vlog(const char* level, const char* fmt, ...);
 
-/**
-	 LOG FUNCTIONS, if you have EYES and a BRAIN you can read lg_xxx part and
-	 see that which function log in which level.
-	 The "lg_log" requires level if you have special levels
-	 lg_xxx (except log) is wrapper of lg_log
- */
-LOGGER_API lg_result_t lg_log(const char* msg, const char* level);
-LOGGER_API lg_result_t lg_info(const char* msg);
-LOGGER_API lg_result_t lg_warn(const char* msg);
-LOGGER_API lg_result_t lg_error(const char* msg);
+#ifdef __cplusplus
+}
+#endif
+
+// log functions to be going to used is macros now
+// main function is lg_vlog
+#define lg_log(level, fmt, ...) \
+	lg_vlog(level, fmt, ##__VA_ARGS__)
+
+#define lg_info(fmt, ...) \
+	lg_vlog("INFO", fmt, ##__VA_ARGS__)
+
+#define lg_error(fmt, ...) \
+  lg_vlog("ERROR", fmt, ##__VA_ARGS__)
+
+#define lg_warn(fmt, ...) \
+  lg_vlog("WARNING", fmt, ##__VA_ARGS__)
+
+// you can add your custom level like this:
+#define lg_custom(fmt, ...) \
+	lg_vlog("CUSTOM", fmt, ##__VA_ARGS__)
+
+// logger max message size (you can change it)
+// this is used in custom formatting
+#define LOGGER_MAX_MSG_SIZE 1024
 
 // stb style implementation macros
 #ifdef LOGGER_IMPLEMENTATION
@@ -127,6 +151,7 @@ LOGGER_API lg_result_t lg_error(const char* msg);
 
 #endif // _WIN32
 
+// i stands for "internal", so lgierror means logger internal error
 // lgierror - prints out where it happened
 #define lgierror(fmt, ...) \
 	do { \
@@ -150,18 +175,61 @@ LOGGER_API lg_result_t lg_error(const char* msg);
 #define LG_DEBUG(fmt, ...) ((void)0)
 #endif // LOGGER_DEBUG
 
-static int is_alive = 0;
-static int lg_isLocalTime = 0;
-static FILE* lg_logFile;
+static int isAlive = 0;
+static int isLocalTime = 0;
+static FILE* logFile = NULL;
+static int (*customLogFunc)(const char*, const char*,
+														const char*, char*, size_t) = NULL;
 
-// by default, it is not forced to init
-lg_result_t lg_init(const char* logs_dir, int use_local_time) {
-	return lg_init_(logs_dir, use_local_time, 0);
-}
+/*
+	Gets time using kernel in this format: %Y.%m.%d-%H.%M.%S.%MS (%MS is millis in 3 digits)
+	or YYYY.MM.DD-HH.MM.SS.SSS
+	example: 2026.01.11-21.44.40.255 means January 11th, 2026, 21:44:40 or 9:44:40 pm, ms: 255
+	If lg_isLocalTime = 0, spits out time in UTC format.
+	Accepts buffer to write and its size
+*/
+static lg_result_t get_time_str(char* buf, size_t size) {
+	if (!buf || size == 0) return LG_RUNTIME_ERROR;
 
-// but you can still force to init when something might weird happen
-lg_result_t lg_force_init(const char* logs_dir, int use_local_time) {
-	return lg_init_(logs_dir, use_local_time, 1);
+#ifdef _WIN32
+	SYSTEMTIME st;
+	if (isLocalTime) GetLocalTime(&st);
+	else GetSystemTime(&st);
+	int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
+									 st.wYear, // 2026
+									 st.wMonth, // 1
+									 st.wDay, // 21
+									 st.wHour, // 22
+									 st.wMinute, // 16
+									 st.wSecond, // 40
+									 st.wMilliseconds // 450
+		);
+	if (n <= 0 || (size_t)n >= size) return LG_RUNTIME_ERROR;
+#else // unix
+	// get nanosec with struct
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+
+	// get other fields except ns
+	struct tm tm_val;
+	if (isLocalTime) localtime_r(&ts.tv_sec, &tm_val);
+	else gmtime_r(&ts.tv_sec, &tm_val);
+
+	long ms = ts.tv_nsec / 1000000; // nanosecond -> millisecond
+
+	int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
+									 tm_val.tm_year + 1900,
+									 tm_val.tm_mon + 1,
+									 tm_val.tm_mday,
+									 tm_val.tm_hour,
+									 tm_val.tm_min,
+									 tm_val.tm_sec,
+									 ms
+		);
+	if (n <= 0 || (size_t)n >= size) return LG_RUNTIME_ERROR;
+	//            ^^^^^^^^^^^^^^^^^, buffer has not enough capacity
+#endif // _WIN32
+	return LG_SUCCESS;
 }
 
 // checks if dir is a valid directory (exists and directory)
@@ -186,7 +254,6 @@ static int mkdir_p(const char *path) {
 	char tmp[PATH_MAX];
 	size_t size = sizeof(tmp);
 	int n = snprintf(tmp, size, "%s", path);
-
 	if (n < 0 || (size_t)n >= size) return -1;
  
 	// go char by char
@@ -215,19 +282,20 @@ static int mkdir_p(const char *path) {
 }
 
 // main init with is_force
-lg_result_t lg_init_(const char* logs_dir, int use_local_time, int is_forced) {
-	if (is_alive && !is_forced) return LG_SUCCESS;
-	is_alive = 1;
-	lg_isLocalTime = use_local_time;
-
+lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
+	if (isAlive) return LG_SUCCESS;
+	isLocalTime = config.localTime;
+	customLogFunc = config.logFormatter;
+	
 	int dir_status = check_dir(logs_dir); // -1 = NOT valid directory, 0 = NOT exists
 
+	// handle not a valid directory
 	if (dir_status == -1) {
 		LG_DEBUG_ERR("Provided path is not a valid directory to create: %s", logs_dir);
 		return LG_NOT_VALID_DIR;
 	}
 
-	// check if logs_dir exists, if it is not, try to create (best effort)
+	// handle just non-exist directory (best effort)
 	if (dir_status == 0) {
 		if (!mkdir_p(logs_dir)) {
 		  LG_DEBUG_ERR("Cannot create provided path: %s", logs_dir);
@@ -236,122 +304,96 @@ lg_result_t lg_init_(const char* logs_dir, int use_local_time, int is_forced) {
 	}
 
 	// get time str and length
-	char* time_str = lg_get_time(); // eg: "2026.01.11-12.34.56.203"
-	size_t len = strlen(logs_dir) + 1 + strlen(time_str) + 4 + 1; 
+	char time_str[24];
+	if (get_time_str(time_str, sizeof(time_str)) != 1) return LG_FATAL_ERROR;
+
+	size_t len = strlen(logs_dir) + 29;
   // +1 -> possible '/'
   // +4 -> ".log"
   // +1 -> '\0'
+	// +23 -> time_str's length = strlen(time_str)
 	char file_path[len];
 	
 	// normalize logs dir name (add trailing slash)
 	// always remind: logs dir must be like this: "/home/ilpen/myapp/logs/" or "./logs/" or "logs/"
 	// it is full, absolute path, ended up with "/"
-	// defining format string that to be used at snprintf
 	char last_elem = logs_dir[strlen(logs_dir) - 1];
+	int n = 0;
 	if (last_elem == '/' || last_elem == '\\') {
-    snprintf(file_path, len, "%s%s.log", logs_dir, time_str);
+    n = snprintf(file_path, len, "%s%s.log", logs_dir, time_str);
 	} else {
-    snprintf(file_path, len, "%s/%s.log", logs_dir, time_str);
+    n = snprintf(file_path, len, "%s/%s.log", logs_dir, time_str);
 	}
+	// if file name shitted
+	if (n <= 0 || (size_t)n >= len) return LG_FATAL_ERROR;
 
-	lg_logFile = fopen(file_path, "w");
-	if (!lg_logFile) {
+	// open file in write mode
+	logFile = fopen(file_path, "w");
+	if (!logFile) {
 		LG_DEBUG_ERR("Cannot open the log file: %s", file_path);
 		return LG_NOT_OPEN_FILE;
 	}
+	
+	isAlive = 1;
 	return LG_SUCCESS;
 }
+
+// main log function with write and prettify
+lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
+	// doesnt log when it is destructed or some weird states
+	if (isAlive != 1 || logFile == NULL) return LG_RUNTIME_ERROR;
+
+	// variadic processing
+	va_list args;
+	va_start(args, fmt);
+	char msg[1024]; // we allocate enough memory
+	vsnprintf(msg, sizeof(msg), fmt, args);
+	va_end(args);
+	
+	char time_str[24];
+	if (get_time_str(time_str, sizeof(time_str)) != 1) return LG_RUNTIME_ERROR;
+
+  // log message customization starts here
+	if (customLogFunc == NULL) {
+		int len = strlen(level) + strlen(msg) + 29;
+		char fixed[len];
+		
+		int n = snprintf(fixed, sizeof(fixed), "%s [%s] %s\n", time_str, level, msg);
+		if (n < 0 || n >= len)
+			return LG_RUNTIME_ERROR;  // buffer too smol
+
+		printf("%s", fixed);
+		fprintf(logFile, "%s", fixed);
+	} else {
+		// if you use custom func, you are limited to fixed save due to some "C" features
+		char buf[LOGGER_MAX_MSG_SIZE];
+		int res = customLogFunc(time_str, level, msg, buf, sizeof(buf));
+		if (res != 1) return LG_RUNTIME_ERROR;
+		printf("%s", buf);
+		fprintf(logFile, "%s", buf);
+	}
+	return LG_SUCCESS;
+}
+
+int lg_is_alive() { return isAlive; }
 
 lg_result_t lg_destruct(void) {
 	// if it is not alive, do not try to destruct
-	if (is_alive == 0) return LG_RUNTIME_ERROR;
+	if (isAlive == 0) return LG_RUNTIME_ERROR;
 	
 	// close the file if its not closed
-	if (lg_logFile != NULL) {
-		if (fclose(lg_logFile) != 0) {
+	if (logFile != NULL) {
+		if (fclose(logFile) != 0) {
 			LG_DEBUG_ERR("Log file cannot be closed!");
 			return LG_FATAL_ERROR;
 		}
-		lg_logFile = NULL; // clear ptr
+		logFile = NULL; // clear ptr
 	}
 	
-	is_alive = 0;
+	isAlive = 0;
 	return LG_SUCCESS;
 }
 
-lg_result_t lg_log(const char* msg, const char* level) {
-	// if it is not alive or file is destroyed, do not log
-	if (is_alive != 1 || lg_logFile == NULL) return LG_RUNTIME_ERROR;
-
-	char* time_str = lg_get_time();
-	char fixed[strlen(time_str) + strlen(level) + strlen(msg) + 6];
-	// TIME_LENGTH [LEVEL_LENGTH] MSG_LENGTH
-	// other stuff with \0: 6
-	snprintf(fixed, sizeof(fixed), "%s [%s] %s\n", time_str, level, msg);
-
-	fprintf(lg_logFile, "%s", fixed);
-	printf("%s", fixed);
-	return LG_SUCCESS;
-}
-
-lg_result_t lg_info(const char* msg) {
-	return lg_log(msg, "INFO");
-}
-
-lg_result_t lg_error(const char* msg) {
-	return lg_log(msg, "ERROR");
-}
-
-lg_result_t lg_warn(const char* msg) {
-	return lg_log(msg, "WARNING");
-}
-
-int lg_is_alive() { return is_alive; }
-
-// cross-platform milisecond getter
-static long get_millis(int is_local) {
-#ifdef _WIN32
-	SYSTEMTIME st;
-	if (is_local) GetLocalTime(&st);
-	else GetSystemTime(&st);
-	return st.wMilliseconds;
-#else
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_usec / 1000; // microsecond -> millisecond
-#endif // _WIN32
-}
-
-char* lg_get_time() {
-	size_t len = 94; // fmt string has 23 fixed size and ofc \0
-	                 // but we add extra +70 byte for security reasons
-	char* buf = (char*)malloc(len * sizeof(char));
-	if (!buf) return NULL; // buy more ram if you hit here
-	
-	time_t t = time(NULL);
-	struct tm tm_val;
-
-#ifdef _WIN32
-	if (lg_isLocalTime) localtime_s(&tm_val, &t);
-	else gmtime_s(&tm_val, &t);
-#else
-	if (lg_isLocalTime) localtime_r(&t, &tm_val);
-	else gmtime_r(&t, &tm_val);
-#endif // _WIN32
-
-	long ms = get_millis(lg_isLocalTime);
-
-	snprintf(buf, len, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
-					 tm_val.tm_year + 1900,
-					 tm_val.tm_mon + 1,
-					 tm_val.tm_mday,
-					 tm_val.tm_hour,
-					 tm_val.tm_min,
-					 tm_val.tm_sec,
-					 ms
-		);
-	return buf;
-}
 
 #ifndef LOGGER_PREFIX_MODIFIERS_GUARD
 #define LOGGER_PREFIX_MODIFIERS_GUARD

@@ -7,15 +7,13 @@
 
 class LoggerStream {
  public:
-  using LogFunc = lg_result_t (*)(const char*);
-
-  explicit LoggerStream(LogFunc fn)
-      : m_fn(fn) {}
+  explicit LoggerStream(std::string level)
+      : m_level(level) {}
 
   ~LoggerStream() {
     const std::string s = m_buffer.str();
     if (!s.empty()) {
-      m_fn(s.c_str());
+			lg_log(m_level.c_str(), s.c_str());
     }
   }
 
@@ -36,11 +34,12 @@ class LoggerStream {
  private:
   std::ostringstream m_buffer;
   const char m_delimiter = ' ';
-  LogFunc m_fn;
+	std::string m_level;
 };
 
-#define sinfo LoggerStream(lg_info)
-#define serr  LoggerStream(lg_error)
-#define swarn LoggerStream(lg_warn)
+#define sinfo LoggerStream("INFO")
+#define serr  LoggerStream("ERROR")
+#define swarn LoggerStream("WARNING")
+#define scustom LoggerStream("CUSTOM")
 
 #endif

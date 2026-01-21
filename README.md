@@ -18,6 +18,27 @@ It is written in purely C. Contains C++ stuff for extra options
 - [Header-only in C++, exported via C ABI (Deprecated)](./deprecated/logger_stb.hpp)
 - [Deprecated Source code (only-C++ 1.0.0)](deprecated/)
 
+## Customization
+
+- You can customize log message. The customization limited by just layout actually. You can change time string, level and formatted message layout.
+- Default Layout: time_str [level] msg
+- If you want to use custom log layout declare formatter function ([see this](logger.h#L62)) and assign it in logger config. Don't forget newline char.
+```c
+int myFormatter(const char* time_str, const char* level, const char* message, char* out, size_t size) {
+    int n = snprintf(out, size, "%s %s: %s\n", time_str, level, message);
+    // like this: "2026.01.22-00.45.05.994 WARNING: a warning message"
+    if (n < 0 | (size_t)n >= size) return 0; // if snprintf fails
+    return 1;
+}
+
+LoggerConfig conf = { .localTime = 1, .logFormatter = myFormatter };
+```
+
+- And you can always add new level and new logger stream!
+- All you have to do is define macros [like this](logger.h#L121)
+- And define stream macro [like this](loggerstream.hpp#L43)
+- That's it, you can use your custom level
+
 ## Library Linking/Usage
 
 Use STB style header (`logger.h`) in any language that supports C ABI. (C, Rust, C++ etc.)
