@@ -3,38 +3,44 @@
 
 #include <sstream>
 #include <string>
+#include <utility>
 #include "logger.h"
 
 class LoggerStream {
  public:
   explicit LoggerStream(std::string level)
-      : m_level(level) {}
+    : m_level(std::move(level)) {}
 
   ~LoggerStream() {
     const std::string s = m_buffer.str();
     if (!s.empty()) {
-			lg_log(m_level.c_str(), s.c_str());
+      lg_log(m_level.c_str(), s.c_str());
     }
   }
 
   template <typename T>
   LoggerStream& operator<<(const T& value) {
-    m_buffer << value << m_delimiter;
+    if (!m_first) m_buffer << m_delimiter;
+    m_buffer << value;
+    m_first = false;
     return *this;
   }
 
-    // support for QStrings
+  // support for QStrings
 # ifdef QT_CORE_LIB
 # include <QString>
   LoggerStream& operator<<(const QString& value) {
-    m_buffer << value.toStdString() << m_delimiter;
+    if (!m_first) m_buffer << m_delimiter;
+    m_buffer << value.toUtf8().constData();
+    m_first = false;
     return *this;
   }
 # endif
  private:
+  bool m_first = true;
   std::ostringstream m_buffer;
   const char m_delimiter = ' ';
-	std::string m_level;
+  std::string m_level;
 };
 
 #define sinfo LoggerStream("INFO")

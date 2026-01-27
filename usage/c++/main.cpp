@@ -21,8 +21,10 @@ void hello() {
 }
 
 void log_something(int i) {
-  sinfo << "Hello from stream, thread " << std::this_thread::get_id() << ", i = " << i;
-  lg_info("Hello from API!");
+	auto tid = std::this_thread::get_id(); 
+	size_t id = std::hash<std::thread::id>{}(tid);
+  sinfo << "Hello from stream, thread" << id << ", i =" << i;
+  lg_info("Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API! thread %zu , i = %d", id, i);
 }
 
 void destruct_test() {
@@ -56,6 +58,9 @@ void multi_thread() {
   t2.join();
 }
 
+#include <fstream>
+static std::ofstream testFile;
+
 void stress_test() {
   // stress test (1000 thread)
   constexpr int THREAD_COUNT = 1000;
@@ -75,6 +80,12 @@ void stress_test() {
   // print elapsed time
   std::chrono::duration<double> diff = end - start;
   std::cout << "Elapsed time: " << diff.count() << " s\n";
+  if (!testFile) return;
+  testFile << diff.count() << '\n';
+}
+
+int myFormatter(const char* time_str, const char* level, const char* msg, char* out, size_t size) {
+	return snprintf(out, size, "%s {%s} %s\n", time_str, level, msg);
 }
 
 int main(int argc, char** argv) {
@@ -87,7 +98,8 @@ int main(int argc, char** argv) {
 
 	LoggerConfig conf = {
 		.localTime = isLocalTime,
-		.logFormatter = NULL
+    .printStdout = 1,
+		.logFormatter = myFormatter
 	};
   if (lg_init(path.c_str(), conf) != 1) {
     std::cerr << "[MAIN] Logger init failed\n";
@@ -112,6 +124,7 @@ int main(int argc, char** argv) {
 			multi_thread();
 			break;
 		case 2:
+      if (!testFile) testFile = std::ofstream("time.txt", std::ios::app);
 			stress_test();
 			break;
 		case 3:
@@ -129,6 +142,8 @@ int main(int argc, char** argv) {
   }
 
 exit:
+  testFile.close();
+  
   if (lg_destruct() != 1) {
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
