@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -I..
+CFLAGS := -Wall -Wextra -I../..
 
 TARGET := app
 SRC := main.c

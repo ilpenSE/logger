@@ -2,8 +2,12 @@
 #define LOGGER_H
 
 /**
-   THIS IS STB-STYLE LIBRARY HEADER OF LOGGER. IT IS PURELY C.
+   THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
+   IT IS PURELY C. (EXCEPT SOME C++ COMPATIBILITY STUFF)
    YOU CAN USE IT LIKE A TRUE STB STYLE HEADER.
+   WARNING: THIS DOES NOT SUPPORT WINSLOP ENVIRONMENT! LIKE MSVC OR WIN32 THREADS!
+   ONLY SUPPORTS POSIX ENVIRONMENTS AND NOT TESTED ON ARM CPUS
+   TESTED ON AMD64 GNU-LINUX WITH GCC AND CLANG
 
    MACROS THAT YOU CAN USE:
    LOGGER_IMPLEMENTATION -> Implementation of this header (USE THIS ON COMPILATION OR USAGE)
@@ -29,11 +33,25 @@
    if (lg_destruct() != 1) return 1;
    }
 
-   AND IF YOU'RE USING IMPLEMENTATION MACRO, YOU DONT HAVE TO DYANAMIC LINK THE LIBRARY
-   BUT YOU HAVE TO USE C TYPES AND FUNCTIONS AGAIN.
+   In this asynchronous logger, we have main and writer thread.
+   Main thread manages lifetime and putting logs into ring buffer.
+   Writer thread writes messages that in the ring buffer to log file
+   and stdout if you provided.
+   Sometimes, your log messages may be disappeared if you stress-test it.
+   That's because the ring buffer is a fixed-size buffer and it is full.
+   I have decided the "DROP THE LOG" policy at those situations but if you
+   provide printStdout as 1, since the writer thread gonna be slow,
+   you just dont get any dropped log. To see in where it dropped, you can define
+   LOGGER_DEBUG in your compilation (with -DLOGGER_DEBUG) or runtime (#define LOGGER_DEBUG)
+   
+   The config printStdout significantly slows down both of the threads
+   if you're using this at prod, dont forget to make printStdout as 0
 
-   THIS HEADER IS SAFE TO USE IN C++ (ATOMIC KEYWORDS WILL BE DISPATCHED) BUT IF YOU USE C,
-   YOU HAVE TO USE AT LEAST C11 STANDART
+   If you're using implementation macro, you dont have to dynamically
+   link the library but you have to use c types and functions again.
+
+   This header is safe to use in C++ (atomic keywords will be dispatched)
+   but if you use C, you have to use at least C11 standart
 */
 
 // for cross-platform compatibility
@@ -118,6 +136,14 @@ LOGGER_API int lg_is_alive();
 */
 LOGGER_API lg_result_t lg_vlog(const char* level, const char* fmt, ...);
 
+  /*
+    Wrapper log functions for FFI, if you dont use C/C++ and using your language's FFI,
+    you must use these kind of stuff
+   */
+LOGGER_API lg_result_t lg_info_s(const char* msg);
+LOGGER_API lg_result_t lg_error_s(const char* msg);
+LOGGER_API lg_result_t lg_warn_s(const char* msg);
+  
 #ifdef __cplusplus
 }
 #endif
@@ -175,7 +201,7 @@ typedef struct {
 #include <time.h>
 #include <limits.h>
 #include <errno.h>
-#include <pthread.h>
+#include <pthread.h> // TODO: Make this threads for NON-UNIX OS's like micr*slop's AI-bloated winslop
 
 #ifdef _WIN32
 #include <windows.h>
@@ -345,9 +371,9 @@ static int mkdir_p(const char *path) {
 
 // global mutex to prevent race conditions
 static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t wmtx = PTHREAD_MUTEX_INITIALIZER;
 
 // writer thread mutex and cond
-static pthread_mutex_t wmtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 static pthread_t writer_tid;
 
@@ -361,29 +387,32 @@ static void* writer_thread_func(void* arg) {
   
   while (1) {
     pthread_mutex_lock(&wmtx);
-    while (aload(pcurr) == aload(wcurr) && aload(isAlive))
-      pthread_cond_wait(&cond, &wmtx); // wait until producer advances
+    while (aload(wcurr) == aload(pcurr) && aload(isAlive)) {
+      pthread_cond_wait(&cond, &wmtx);
+    }
     pthread_mutex_unlock(&wmtx);
+
     size_t w = aload(wcurr);
     size_t p = aload(pcurr);
 
     while (w < p) {
       log_entry_t* slot = &ring[w % LOGGER_RING_SIZE];
       size_t len = slot->length;
-      if (len == 0) break;
-      //LG_DEBUG("Writer recieved \"%s\", length = %zu", slot->message, slot->length);
-      fwrite(slot->message, 1, slot->length, f); // fprintf
-      if (aload(isPrintStdout) == 1)
-        fwrite(slot->message, 1, slot->length, stdout); // printf
+      if (len != 0) {
+        //LG_DEBUG("Writer recieved \"%s\", length = %zu", slot->message, slot->length);
+        fwrite(slot->message, 1, slot->length, f); // fprintf
+        if (aload(isPrintStdout) == 1)
+          fwrite(slot->message, 1, slot->length, stdout); // printf
 
-      //LG_DEBUG("Writer wrote \"%s\", length = %zu", slot->message, slot->length);
-      slot->length = 0;
+        //LG_DEBUG("Writer wrote \"%s\", length = %zu", slot->message, slot->length);
+        slot->length = 0;
+      }
       w += 1;
     }
     astore(wcurr, w);
     // if we dont have any thing to do and logger is dead, so break the main loop
     // if logger is destructed and we have work to do, first we finishing our job and die
-    if (aload(isAlive) == 0 && w == p) {
+    if (aload(isAlive) == 0 && aload(wcurr) == aload(pcurr)) {
       LG_DEBUG("Writer thread is exiting");
       fflush(f);
       if (aload(isPrintStdout) == 1)
@@ -438,15 +467,21 @@ lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
   }
 
   size_t len = strlen(logs_dir) + 29;
-  // +1 -> possible '/'
-  // +4 -> ".log"
-  // +1 -> '\0'
-  // +23 -> time_str's length = strlen(time_str)
-  char file_path[len];
+  char file_path[len]; // TODO: for clang++, it generates warning like this:
+  /*
+    In file included from main.cpp:9:
+../../logger.h:470:18: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
+  470 |   char file_path[len];
+      |                  ^~~
+../../logger.h:470:18: note: read of non-const variable 'len' is not allowed in a constant expression
+../../logger.h:469:10: note: declared here
+  469 |   size_t len = strlen(logs_dir) + 29;
+      |          ^
+1 warning generated.
+Make this warning disappear and dont use C++ std::vector or smth
+   */
   
   // normalize logs dir name (add trailing slash)
-  // always remind: logs dir must be like this: "/home/ilpen/myapp/logs/" or "./logs/" or "logs/"
-  // it is full, absolute path, ended up with "/"
   char last_elem = logs_dir[strlen(logs_dir) - 1];
   int n = 0;
   if (last_elem == '/' || last_elem == '\\') {
@@ -454,6 +489,7 @@ lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
   } else {
     n = snprintf(file_path, len, "%s/%s.log", logs_dir, time_str);
   }
+  
   // if file name shitted
   if (n <= 0 || (size_t)n >= len) {
     pthread_mutex_unlock(&mtx);
@@ -484,6 +520,7 @@ lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
 // main log function, prepairs the message and invokes the writer
 lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
   pthread_mutex_lock(&mtx);
+
   // doesnt log when it is destructed or some weird states
   if (aload(isAlive) != 1) {
     LG_DEBUG_ERR("Cannot log because logger is ded :skull:");
@@ -518,7 +555,7 @@ lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
   size_t w = aload(wcurr);
   if (p - w >= LOGGER_RING_SIZE) {
     // buffer full, policy: drop
-    LG_DEBUG_ERR("Ring buffer is full, dropping log message");
+    LG_DEBUG_ERR("Ring buffer is full, dropping the log");
     pthread_mutex_unlock(&mtx);
     return LG_RING_FULL;
   }
@@ -542,21 +579,24 @@ lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
   size_t actual_len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1;
   memcpy(ring[next].message, buf, actual_len);
   ring[next].message[actual_len] = '\0'; // dont forget to add null-terminator
+
 #ifdef __cplusplus
   std::atomic_thread_fence(std::memory_order_release);
 #else
   atomic_thread_fence(memory_order_release);
 #endif
+  
   ring[next].length = actual_len;
   //LG_DEBUG("Producer appended to ring: \"%s\", length = %zu", ring[next].message, actual_len);
   // advance producer and invoke writer thread
   astore(pcurr, p + 1);
+  pthread_mutex_unlock(&mtx);
+
   pthread_mutex_lock(&wmtx);
   pthread_cond_signal(&cond);
   pthread_mutex_unlock(&wmtx);
   //LG_DEBUG("Producer invoked writer thread");
 
-  pthread_mutex_unlock(&mtx);
   return LG_SUCCESS;
 }
 
@@ -566,20 +606,21 @@ int lg_is_alive() {
 
 lg_result_t lg_destruct(void) {
   pthread_mutex_lock(&mtx);
+
+  pthread_mutex_lock(&wmtx);
   // if it is not alive, do not try to destruct
   if (aload(isAlive) == 0) {
-    pthread_mutex_unlock(&mtx);
     LG_DEBUG_ERR("Logger is already dead!");
+    pthread_mutex_unlock(&wmtx);
+    pthread_mutex_unlock(&mtx);
     return LG_RUNTIME_ERROR;
   }
-
-  // set alive 0 here but dont clear config
   astore(isAlive, 0);
   
   // invoke the writer thread and it'll see its being destructed
-  pthread_mutex_lock(&wmtx);
   pthread_cond_signal(&cond);
   pthread_mutex_unlock(&wmtx);
+  
   pthread_join(writer_tid, NULL); // wait the thread to clear
 
   // clear config after thread exit
@@ -598,6 +639,22 @@ lg_result_t lg_destruct(void) {
   
   pthread_mutex_unlock(&mtx);
   return LG_SUCCESS;
+}
+
+lg_result_t lg_log_s(const char* level, const char* msg) {
+  return lg_vlog(level, "%s", msg);
+}
+
+lg_result_t lg_info_s(const char* msg) {
+  return lg_log_s("INFO", msg);
+}
+
+lg_result_t lg_error_s(const char* msg) {
+  return lg_log_s("ERROR", msg);
+}
+
+lg_result_t lg_warn_s(const char* msg) {
+  return lg_log_s("WARN", msg);
 }
 
 #endif // LOGGER_IMPLEMENTATION
