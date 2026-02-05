@@ -8,7 +8,8 @@
 ![Flexible](https://img.shields.io/badge/flexible-blue?style=for-the-badge)
 ![STB-Style](https://img.shields.io/badge/stb-single%20header-yellow?style=for-the-badge)
 
-This Logger supports apple systems (APPLE) and linux
+This Logger supports apple systems (APPLE) and linux.
+
 You can build and generate `.so` and `.dylib` on your machine.
 
 It does only have header files with implementation, but if you define LOGGER_IMPLEMENTATION during compilation of header, you can get shared object.
@@ -23,14 +24,14 @@ Since it is written in C, you can port this library every fucking programming la
 - [C++ Stream (<<) support](./loggerstream.hpp)
 - [Usage in C](usage/c)
 - [Usage in C++](usage/c++)
-- [Header-only in C++, exported via C ABI (Deprecated)](./deprecated/logger_stb.hpp)
-- [Deprecated Source code (only-C++ 1.0.0)](deprecated/)
+- [Header-only in C++, exported via C ABI (Deprecated)](https://github.com/ilpenSE/logger/tree/deprecated)
 
 ## Customization
 
 - You can customize log message. The customization limited by just layout actually. You can change time string, level and formatted message layout.
 - Default Layout: time_str [level] msg
 - If you want to use custom log layout declare formatter function ([see this](logger.h#L62)) and assign it in logger config. Don't forget newline char.
+
 ```c
 int myFormatter(const char* time_str, const char* level, const char* message, char* out, size_t size) {
   return snprintf(out, size, "%s %s: %s\n", time_str, level, message);
