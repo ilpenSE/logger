@@ -30,7 +30,6 @@ impl fmt::Display for LgResult {
 pub struct LoggerConfig {
   pub local_time: c_int,
   pub print_stdout: c_int,
-  // Callback fonksiyonu (şu an kullanmıyoruz, NULL göndereceğiz)
   pub log_formatter: Option<unsafe extern "C" fn(*const c_char, *const c_char, *const c_char, *mut c_char, usize) -> c_int>,
 }
 

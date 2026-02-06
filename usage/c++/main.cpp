@@ -24,7 +24,7 @@ void log_something(int i) {
 	auto tid = std::this_thread::get_id(); 
 	size_t id = std::hash<std::thread::id>{}(tid);
   sinfo << "Hello from stream, thread" << id << ", i =" << i;
-  lg_info("Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API!Hello from API! thread %zu , i = %d", id, i);
+  lg_info("Hello from API! thread %zu , i = %d", id, i);
 }
 
 void destruct_test() {
@@ -40,7 +40,7 @@ void simple_test() {
   // you can use binary op in c++ with loggerstream.hpp
   sinfo << "Hello" << "World!";
   serr << "Some error occured";
-  swarn << "Some warning";
+  swarn << "Some %20 warning";
 
   // also you can use classic logger.h api (works on every other language)
   lg_info("info from api");
@@ -88,17 +88,12 @@ int myFormatter(const char* time_str, const char* level, const char* msg, char* 
 	return snprintf(out, size, "%s {%s} %s\n", time_str, level, msg);
 }
 
-int main(int argc, char** argv) {
+int main() {
   std::string path = "logs";
-  int isLocalTime = 1;
-  if (argc >= 3) {
-    path = argv[1];
-    isLocalTime = (std::string(argv[2]) == "1");
-  }
 
 	LoggerConfig conf = {
-		.localTime = isLocalTime,
-    .printStdout = 1,
+		.localTime = true,
+    .printStdout = true,
 		.logFormatter = myFormatter
 	};
   if (lg_init(path.c_str(), conf) != 1) {

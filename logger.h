@@ -5,8 +5,6 @@
    THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
    IT IS PURELY C. (EXCEPT SOME C++ COMPATIBILITY STUFF)
    YOU CAN USE IT LIKE A TRUE STB STYLE HEADER.
-   WARNING: THIS DOES NOT SUPPORT WINSLOP ENVIRONMENT! LIKE MSVC OR WIN32 THREADS!
-   ONLY SUPPORTS POSIX ENVIRONMENTS AND NOT TESTED ON ARM CPUS
    TESTED ON AMD64 GNU-LINUX WITH GCC AND CLANG
 
    MACROS THAT YOU CAN USE:
@@ -56,14 +54,16 @@
 
 // for cross-platform compatibility
 #ifdef _WIN32
-  #ifdef LOGGER_BUILD
+  #ifdef LOGGER_IMPLEMENTATION
+   #define LOGGER_API 
+  #elif defined(LOGGER_BUILD)
     #define LOGGER_API __declspec(dllexport)
   #else
     #define LOGGER_API __declspec(dllimport)
-  #endif // LOGGER_BUILD
-#else
+  #endif
+#else // unix:
   #define LOGGER_API __attribute__((visibility("default")))
-#endif // _WIN32
+#endif
 
 // some global includes here
 #include <stdarg.h>
@@ -127,23 +127,28 @@ LOGGER_API lg_result_t lg_destruct(void);
 LOGGER_API int lg_is_alive();
 
 /*
-  LOG FUNCTIONS, if you have EYES and a BRAIN you can read lg_xxx part and
-  see that which function log in which level.
-  The "lg_log" requires level if you have special levels
-  lg_xxx (except log) is wrapper of lg_log
-  @since 2.1: these functions accept variadic args like in printf
-  @since 2.2: this function DOES NOT do any write call it just appends message entry to ring buffer and invokes writer thread (producer)
+  This is the main producer function. It accepts format
+  resolved message and manipulates it by customization.
+  It pushes final message to be printed to the ring buffer.
+  Then invokes the writer thread.
 */
-LOGGER_API lg_result_t lg_vlog(const char* level, const char* fmt, ...);
+LOGGER_API lg_result_t lg_producer(const char* level, const char* msg);
 
-  /*
-    Wrapper log functions for FFI, if you dont use C/C++ and using your language's FFI,
-    you must use these kind of stuff
-   */
+/*
+  This is the format resolver for lg_producer.
+  C macros use this. It's sensitive to "%" char.
+  It may crash your app if you're using this on FFI or wrongly on C
+*/
+LOGGER_API lg_result_t lg_vproducer(const char* level, const char* fmt, ...);
+
+/*
+  Wrapper log functions for FFI, if you dont use C/C++ or
+  using your language's FFI, you must use these:
+*/
 LOGGER_API lg_result_t lg_info_s(const char* msg);
 LOGGER_API lg_result_t lg_error_s(const char* msg);
 LOGGER_API lg_result_t lg_warn_s(const char* msg);
-  
+
 #ifdef __cplusplus
 }
 #endif
@@ -151,14 +156,14 @@ LOGGER_API lg_result_t lg_warn_s(const char* msg);
 // log functions to be going to used is macros now
 // main function is lg_vlog
 #define lg_log(level, fmt, ...) \
-  lg_vlog(level, fmt, ##__VA_ARGS__)
+  lg_vproducer(level, fmt, ##__VA_ARGS__)
 
-#define lg_info(fmt, ...) lg_log("INFO", fmt, ##__VA_ARGS__)
-#define lg_error(fmt, ...) lg_log("ERROR", fmt, ##__VA_ARGS__)
-#define lg_warn(fmt, ...) lg_log("WARNING", fmt, ##__VA_ARGS__)
+#define lg_info(fmt, ...) lg_vproducer("INFO", fmt, ##__VA_ARGS__)
+#define lg_error(fmt, ...) lg_vproducer("ERROR", fmt, ##__VA_ARGS__)
+#define lg_warn(fmt, ...) lg_vproducer("WARNING", fmt, ##__VA_ARGS__)
 
 // you can add your custom level like this:
-#define lg_custom(fmt, ...) lg_log("CUSTOM", fmt, ##__VA_ARGS__)
+#define lg_custom(fmt, ...) lg_vproducer("CUSTOM", fmt, ##__VA_ARGS__)
 
 // strips ONLY log functions
 #ifdef LOGGER_STRIP_PREFIXES
@@ -197,27 +202,11 @@ typedef struct {
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <time.h>
 #include <limits.h>
 #include <errno.h>
-#include <pthread.h> // TODO: Make this threads for NON-UNIX OS's like micr*slop's AI-bloated winslop
-
-#ifdef _WIN32
-#include <windows.h>
-#include <direct.h> // _mkdir
-
-#define MKDIR(path) _mkdir(path)
-#define PATH_SEP '\\'
-
-#else
-#include <sys/stat.h> // for dirs
-#include <sys/time.h> // for time
-
-#define MKDIR(path) mkdir(path, 0755)
-#define PATH_SEP '/'
-
-#endif // _WIN32
 
 // i stands for "internal", so lgierror means logger internal error
 // lgierror - prints out where it happened
@@ -237,144 +226,132 @@ typedef struct {
 // define this macro to enable error messages in stderr
 // some sort of new version of "LOGGER_VERBOSE" but not exactly the same thing
 #ifdef LOGGER_DEBUG
-#define LG_DEBUG_ERR(fmt, ...) lgierror(fmt, ##__VA_ARGS__)
-#define LG_DEBUG(fmt, ...) lgiprint(fmt, ##__VA_ARGS__)
+ #define LG_DEBUG_ERR(fmt, ...) lgierror(fmt, ##__VA_ARGS__)
+ #define LG_DEBUG(fmt, ...) lgiprint(fmt, ##__VA_ARGS__)
 #else
-#define LG_DEBUG_ERR(fmt, ...) ((void)0) // swallow
-#define LG_DEBUG(fmt, ...) ((void)0)
+ #define LG_DEBUG_ERR(fmt, ...) ((void)0) // swallow
+ #define LG_DEBUG(fmt, ...) ((void)0)
 #endif // LOGGER_DEBUG
 
-// on c++, we dont have _Atomic so we define it
+#ifdef _WIN32
+  #include <windows.h>
+  #include <direct.h> // _mkdir
+
+  #define MKDIR(path) _mkdir(path)
+  #define PATH_SEP '\\'
+
+  typedef HANDLE pthread_t;
+  typedef CRITICAL_SECTION pthread_mutex_t;
+  typedef CONDITION_VARIABLE pthread_cond_t;
+
+  // mutex
+  #define pthread_mutex_init(m, a) InitializeCriticalSection(m)
+  #define pthread_mutex_destroy(m) DeleteCriticalSection(m)
+  #define pthread_mutex_lock(m) EnterCriticalSection(m)
+  #define pthread_mutex_unlock(m) LeaveCriticalSection(m)
+
+  // threads
+  // transpilation of win32 createthread funcs to UNIX
+  static DWORD WINAPI lg_thread_trampoline(LPVOID arg) {
+    void* (*fn)(void*) = ((void**)arg)[0];
+    void* real_arg     = ((void**)arg)[1]; // unpacking fn and arg
+    free(arg);
+    fn(real_arg);
+    return 0;
+  }
+
+  // t: HANDLE / pthread_t
+  #define pthread_join(t, retval)                 \
+    do {                                          \
+      (void)(retval);                             \
+      WaitForSingleObject((t), INFINITE);         \
+      CloseHandle((t));                           \
+    } while (0)
+
+  static int pthread_create(HANDLE* t, void* attr,
+                          void* (*func)(void*), void* arg) {
+    (void)attr;
+    void** pack = (void**)malloc(sizeof(void*) * 2);
+    if (pack == NULL) return 1;
+    pack[0] = (void*)func;
+    pack[1] = arg;
+    *t = CreateThread(
+      NULL, 0, lg_thread_trampoline, pack, 0, NULL
+      );
+
+    if (!*t) {
+      free(pack);
+      return 1;
+    }
+    
+    return 0;
+  }
+
+  // cond
+  #define pthread_cond_init(c, a) InitializeConditionVariable(c)
+  #define pthread_cond_destroy(c) do { (void)c; } while (0)
+  #define pthread_cond_wait(c, m) SleepConditionVariableCS(c, m, INFINITE)
+  #define pthread_cond_signal(c) WakeConditionVariable(c)
+#else // UNIX
+  #include <sys/stat.h> // for dirs
+  #include <sys/time.h> // for time
+  #include <pthread.h>
+  #define MKDIR(path) mkdir(path, 0755)
+  #define PATH_SEP '/'
+#endif // _WIN32
+
+// C and C++ compatibility bullshit
 #ifdef __cplusplus
-#include <atomic>
-#define ATOMIC(T) std::atomic<T>
-#else
-#include <stdatomic.h>
-#define ATOMIC(T) _Atomic(T)
+  // atomic definitions
+  #include <atomic>
+  #define ATOMIC(T) std::atomic<T>
+  #define aload(x) std::atomic_load_explicit(&(x), std::memory_order_acquire)
+  #define astore(x, v) std::atomic_store_explicit(&(x), (v), std::memory_order_release)
+
+  // alloca definition
+  #ifdef _MSC_VER
+    #include <malloc.h>
+    #define LG_ALLOCA _alloca
+  #else
+    #include <alloca.h>
+    #define LG_ALLOCA alloca
+  #endif // _MSC_VER
+#else // C:
+  // atomic definitions
+  #include <stdatomic.h>
+  #define ATOMIC(T) _Atomic(T)
+  #define aload(x) atomic_load_explicit(&(x), memory_order_acquire)
+  #define astore(x, v) atomic_store_explicit(&(x), (v), memory_order_release)
 #endif // __cplusplus
 
-static ATOMIC(int) isAlive = 0;
-static ATOMIC(int) isLocalTime = 0;
-static ATOMIC(int) isPrintStdout = 0;
+static ATOMIC(bool) isAlive = false;
+static ATOMIC(bool) isLocalTime = false;
+static ATOMIC(bool) isPrintStdout = false;
 static FILE* logFile = NULL;
 static int (*customLogFunc)(const char*, const char*,
                             const char*, char*, size_t) = NULL;
-
-// some quick atomic loads and sets
-#ifdef __cplusplus
-#define aload(x) std::atomic_load_explicit(&(x), std::memory_order_acquire)
-#define astore(x, v) std::atomic_store_explicit(&(x), (v), std::memory_order_release)
-#else
-#define aload(x) atomic_load_explicit(&(x), memory_order_acquire)
-#define astore(x, v) atomic_store_explicit(&(x), (v), memory_order_release)
-#endif
 
 /*
   Gets time using kernel in this format: %Y.%m.%d-%H.%M.%S.%MS (%MS is millis in 3 digits)
   or YYYY.MM.DD-HH.MM.SS.SSS
   example: 2026.01.11-21.44.40.255 means January 11th, 2026, 21:44:40 or 9:44:40 pm, ms: 255
-  If isLocalTime = 0, spits out time in UTC format.
+  If isLocalTime = false, spits out time in UTC format.
   Accepts buffer to write and its size
 */
-static lg_result_t get_time_str(char* buf, size_t size) {
-  if (!buf || size == 0) return LG_RUNTIME_ERROR;
-
-#ifdef _WIN32
-  SYSTEMTIME st;
-  if (aload(isLocalTime) == 1) GetLocalTime(&st);
-  else GetSystemTime(&st);
-  int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
-                   st.wYear, // 2026
-                   st.wMonth, // 1
-                   st.wDay, // 21
-                   st.wHour, // 22
-                   st.wMinute, // 16
-                   st.wSecond, // 40
-                   st.wMilliseconds // 450
-    );
-  if (n <= 0 || (size_t)n >= size) return LG_RUNTIME_ERROR;
-#else // unix
-  // get nanosec with struct
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-
-  // get other fields except ns
-  struct tm tm_val;
-  if (aload(isLocalTime) == 1) localtime_r(&ts.tv_sec, &tm_val);
-  else gmtime_r(&ts.tv_sec, &tm_val);
-
-  long ms = ts.tv_nsec / 1000000; // nanosecond -> millisecond
-
-  int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
-                   tm_val.tm_year + 1900,
-                   tm_val.tm_mon + 1,
-                   tm_val.tm_mday,
-                   tm_val.tm_hour,
-                   tm_val.tm_min,
-                   tm_val.tm_sec,
-                   ms
-    );
-  if (n <= 0 || (size_t)n >= size) return LG_RUNTIME_ERROR;
-  //            ^^^^^^^^^^^^^^^^^, buffer has not enough capacity
-#endif // _WIN32
-  return LG_SUCCESS;
-}
+static bool get_time_str(char* buf, size_t size);
 
 // checks if dir is a valid directory (exists and directory)
-static int check_dir(const char* path) {
-#ifdef _WIN32
-  DWORD attr = GetFileAttributesA(path);
-  if (attr == INVALID_FILE_ATTRIBUTES) return 0; // does not exists
-  if (attr & FILE_ATTRIBUTE_DIRECTORY) return 1; // exists AND directory (valid)
-  return -1; // exists but is not directory
-#else
-  struct stat st;
-  if (stat(path, &st) != 0) return 0; // not exists
-  if (S_ISDIR(st.st_mode)) return 1; // exists AND directory (valid)
-  return -1; // exists but not a directory
-#endif
-}
+static int check_dir(const char* path);
 
 // recursively creates folders (behaves like mkdir -p)
-static int mkdir_p(const char *path) {
-  if (!path || !*path) return 0;
-
-  char tmp[PATH_MAX];
-  size_t size = sizeof(tmp);
-  int n = snprintf(tmp, size, "%s", path);
-  if (n < 0 || (size_t)n >= size) return -1;
- 
-  // go char by char
-  // it expects "/" at the end to create valid directories
-  // if you dont provide trailing slash, you cannot make the folder at the end
-  for (char *p = tmp; *p; p++) {
-    if (*p != PATH_SEP) continue;
-    if (p != tmp && *(p-1) == PATH_SEP) continue; // skip double slashes
-    *p = '\0'; // give MKDIR string that we passed before
-    if (!*tmp) { // tmp is empty, skip
-      *p = PATH_SEP;
-      continue;
-    }
-    LG_DEBUG("Trying to create: %s", tmp);
-    int status = MKDIR(tmp);
-    // swallow already exists errors
-    if (status != 0 && errno != EEXIST) {
-      LG_DEBUG_ERR("Failed to create path: %s", path);
-      return -1;
-    }
-    *p = PATH_SEP; // fix that \0
-  }
-
-  LG_DEBUG("Trying to create: %s", tmp);
-  return MKDIR(tmp) == 0 || errno == EEXIST;
-}
+static bool mkdir_p(const char *path);
 
 // global mutex to prevent race conditions
-static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t wmtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mtx;
+static pthread_mutex_t wmtx;
 
 // writer thread mutex and cond
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t cond;
 static pthread_t writer_tid;
 
 // ring buffer and its cursors
@@ -382,7 +359,8 @@ static log_entry_t ring[LOGGER_RING_SIZE]; // ring buffer
 static ATOMIC(size_t) pcurr; // producer cursor
 static ATOMIC(size_t) wcurr; // writer cursor
 
-static void* writer_thread_func(void* arg) {
+// consumer func, writes entries on the ring to stdout or file
+static void* lg_consumer(void* arg) {
   FILE* f = (FILE*)arg;
   
   while (1) {
@@ -399,12 +377,9 @@ static void* writer_thread_func(void* arg) {
       log_entry_t* slot = &ring[w % LOGGER_RING_SIZE];
       size_t len = slot->length;
       if (len != 0) {
-        //LG_DEBUG("Writer recieved \"%s\", length = %zu", slot->message, slot->length);
         fwrite(slot->message, 1, slot->length, f); // fprintf
         if (aload(isPrintStdout) == 1)
           fwrite(slot->message, 1, slot->length, stdout); // printf
-
-        //LG_DEBUG("Writer wrote \"%s\", length = %zu", slot->message, slot->length);
         slot->length = 0;
       }
       w += 1;
@@ -412,10 +387,10 @@ static void* writer_thread_func(void* arg) {
     astore(wcurr, w);
     // if we dont have any thing to do and logger is dead, so break the main loop
     // if logger is destructed and we have work to do, first we finishing our job and die
-    if (aload(isAlive) == 0 && aload(wcurr) == aload(pcurr)) {
+    if (!aload(isAlive) && aload(wcurr) == aload(pcurr)) {
       LG_DEBUG("Writer thread is exiting");
       fflush(f);
-      if (aload(isPrintStdout) == 1)
+      if (aload(isPrintStdout))
         fflush(stdout);
       break;
     }
@@ -426,6 +401,7 @@ static void* writer_thread_func(void* arg) {
 
 // main init func
 lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
+  pthread_mutex_init(&mtx, NULL);
   pthread_mutex_lock(&mtx);
 
   // silently return success if logger is alive
@@ -434,8 +410,8 @@ lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
     return LG_SUCCESS;
   }
 
-  astore(isPrintStdout, config.printStdout);
-  astore(isLocalTime, config.localTime);
+  astore(isPrintStdout, config.printStdout != 0);
+  astore(isLocalTime, config.localTime != 0);
   customLogFunc = config.logFormatter;
 
   atomic_init(&pcurr, 0);
@@ -467,19 +443,11 @@ lg_result_t lg_init(const char* logs_dir, LoggerConfig config) {
   }
 
   size_t len = strlen(logs_dir) + 29;
-  char file_path[len]; // TODO: for clang++, it generates warning like this:
-  /*
-    In file included from main.cpp:9:
-../../logger.h:470:18: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
-  470 |   char file_path[len];
-      |                  ^~~
-../../logger.h:470:18: note: read of non-const variable 'len' is not allowed in a constant expression
-../../logger.h:469:10: note: declared here
-  469 |   size_t len = strlen(logs_dir) + 29;
-      |          ^
-1 warning generated.
-Make this warning disappear and dont use C++ std::vector or smth
-   */
+#ifdef __cplusplus // some C++ shit
+  char* file_path = (char*)LG_ALLOCA(len);
+#else
+  char file_path[len];
+#endif
   
   // normalize logs dir name (add trailing slash)
   char last_elem = logs_dir[strlen(logs_dir) - 1];
@@ -504,10 +472,13 @@ Make this warning disappear and dont use C++ std::vector or smth
     return LG_NOT_OPEN_FILE;
   }
   
-  astore(isAlive, 1);
+  astore(isAlive, true);
+  
   // create writer thread
-  if (pthread_create(&writer_tid, NULL, writer_thread_func, logFile) != 0) {
-    astore(isAlive, 0);
+  pthread_mutex_init(&wmtx, NULL);
+  pthread_cond_init(&cond, NULL);
+  if (pthread_create(&writer_tid, NULL, lg_consumer, logFile) != 0) {
+    astore(isAlive, false);
     fclose(logFile);
     LG_DEBUG_ERR("Cannot create writer process thread!");
     return LG_FATAL_ERROR;
@@ -517,18 +488,10 @@ Make this warning disappear and dont use C++ std::vector or smth
   return LG_SUCCESS;
 }
 
-// main log function, prepairs the message and invokes the writer
-lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
-  pthread_mutex_lock(&mtx);
-
-  // doesnt log when it is destructed or some weird states
-  if (aload(isAlive) != 1) {
-    LG_DEBUG_ERR("Cannot log because logger is ded :skull:");
-    pthread_mutex_unlock(&mtx);
-    return LG_RUNTIME_ERROR;
-  }
-  
-  // variadic processing
+// main log function with variadics - used at macros
+// gets resolved message and calls lg_producer
+lg_result_t lg_vproducer(const char* level, const char* fmt, ...) {
+  // variadic resolving
   va_list args;
   va_start(args, fmt);
   char msg[LOGGER_MAX_MSG_SIZE]; // we allocate enough memory
@@ -536,13 +499,47 @@ lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
   va_end(args);
   if (mn < 0) {
     LG_DEBUG_ERR("Cannot resolve print format");
-    pthread_mutex_unlock(&mtx);
+    return LG_RUNTIME_ERROR;
+  }
+
+  return lg_producer(level, msg);
+}
+
+// main log function, invokes the writer - used at FFIs
+// accepts format-resolved message to print
+lg_result_t lg_producer(const char* level, const char* msg) {
+  if (!msg || !level) return LG_RUNTIME_ERROR;
+
+  // getting time str
+  char time_str[24];
+  if (!get_time_str(time_str, sizeof(time_str))) {
+    LG_DEBUG_ERR("Cannot get time string");
     return LG_RUNTIME_ERROR;
   }
   
-  char time_str[24];
-  if (get_time_str(time_str, sizeof(time_str)) != 1) {
-    LG_DEBUG_ERR("Cannot get time string");
+  // log message customization starts here
+  char buf[LOGGER_MAX_MSG_SIZE];
+  int n;
+  if (customLogFunc == NULL) {
+    n = snprintf(buf, sizeof(buf), "%s [%s] %s\n", time_str, level, msg);
+  } else {
+    n = customLogFunc(time_str, level, msg, buf, sizeof(buf));
+  }
+
+  if (n < 0) {
+    LG_DEBUG_ERR("Encoding or writing to message buffer error on lg_vlog!");
+    return LG_RUNTIME_ERROR;
+  }
+
+  // truncating the string
+  size_t buflen = (size_t)n < sizeof(buf)
+    ? (size_t)n : sizeof(buf) - 1;
+  
+  pthread_mutex_lock(&mtx);
+
+  // doesnt log when its not alive
+  if (!aload(isAlive)) {
+    LG_DEBUG_ERR("Cannot log because logger is ded :skull:");
     pthread_mutex_unlock(&mtx);
     return LG_RUNTIME_ERROR;
   }
@@ -560,48 +557,21 @@ lg_result_t lg_vlog(const char* level, const char* fmt, ...) {
     return LG_RING_FULL;
   }
   
-  // log message customization starts here
-  char buf[LOGGER_MAX_MSG_SIZE];
-  int n;
-  if (customLogFunc == NULL) {
-    n = snprintf(buf, sizeof(buf), "%s [%s] %s\n", time_str, level, msg);
-  } else {
-    n = customLogFunc(time_str, level, msg, buf, sizeof(buf));
-  }
+  memcpy(ring[next].message, buf, buflen);
+  ring[next].message[buflen] = '\0';
+  ring[next].length = buflen;
 
-  if (n < 0) {
-    LG_DEBUG_ERR("Encoding or writing to message buffer error on lg_vlog!");
-    pthread_mutex_unlock(&mtx);
-    return LG_RUNTIME_ERROR;
-  }
-
-  // truncate string
-  size_t actual_len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1;
-  memcpy(ring[next].message, buf, actual_len);
-  ring[next].message[actual_len] = '\0'; // dont forget to add null-terminator
-
-#ifdef __cplusplus
-  std::atomic_thread_fence(std::memory_order_release);
-#else
-  atomic_thread_fence(memory_order_release);
-#endif
-  
-  ring[next].length = actual_len;
-  //LG_DEBUG("Producer appended to ring: \"%s\", length = %zu", ring[next].message, actual_len);
-  // advance producer and invoke writer thread
+  // advance producer
   astore(pcurr, p + 1);
+  
   pthread_mutex_unlock(&mtx);
 
+  // signal the writer
   pthread_mutex_lock(&wmtx);
   pthread_cond_signal(&cond);
   pthread_mutex_unlock(&wmtx);
-  //LG_DEBUG("Producer invoked writer thread");
 
   return LG_SUCCESS;
-}
-
-int lg_is_alive() {
-  return aload(isAlive);
 }
 
 lg_result_t lg_destruct(void) {
@@ -609,13 +579,13 @@ lg_result_t lg_destruct(void) {
 
   pthread_mutex_lock(&wmtx);
   // if it is not alive, do not try to destruct
-  if (aload(isAlive) == 0) {
+  if (!aload(isAlive)) {
     LG_DEBUG_ERR("Logger is already dead!");
     pthread_mutex_unlock(&wmtx);
     pthread_mutex_unlock(&mtx);
     return LG_RUNTIME_ERROR;
   }
-  astore(isAlive, 0);
+  astore(isAlive, false);
   
   // invoke the writer thread and it'll see its being destructed
   pthread_cond_signal(&cond);
@@ -624,37 +594,141 @@ lg_result_t lg_destruct(void) {
   pthread_join(writer_tid, NULL); // wait the thread to clear
 
   // clear config after thread exit
-  astore(isPrintStdout, 0);
-  astore(isLocalTime, 0);
+  astore(isPrintStdout, false);
+  astore(isLocalTime  , false);
   
   // close the file if its not closed
   if (logFile != NULL) {
     if (fclose(logFile) != 0) {
-      pthread_mutex_unlock(&mtx);
       LG_DEBUG_ERR("Log file cannot be closed!");
+      pthread_mutex_unlock(&mtx);
       return LG_FATAL_ERROR;
     }
-    logFile = NULL; // clear ptr
+    logFile = NULL;
   }
+
+  // consumer things destroy
+  pthread_mutex_destroy(&wmtx);
+  pthread_cond_destroy(&cond);
   
   pthread_mutex_unlock(&mtx);
+  pthread_mutex_destroy(&mtx);
   return LG_SUCCESS;
 }
 
+int lg_is_alive() {
+  return aload(isAlive);
+}
+
 lg_result_t lg_log_s(const char* level, const char* msg) {
-  return lg_vlog(level, "%s", msg);
+  if (!msg) return LG_RUNTIME_ERROR;
+  return lg_producer(level, msg);
 }
 
 lg_result_t lg_info_s(const char* msg) {
-  return lg_log_s("INFO", msg);
+  if (!msg) return LG_RUNTIME_ERROR;
+  return lg_producer("INFO", msg);
 }
 
 lg_result_t lg_error_s(const char* msg) {
-  return lg_log_s("ERROR", msg);
+  if (!msg) return LG_RUNTIME_ERROR;
+  return lg_producer("ERROR", msg);
 }
 
 lg_result_t lg_warn_s(const char* msg) {
-  return lg_log_s("WARN", msg);
+  if (!msg) return LG_RUNTIME_ERROR;
+  return lg_producer("WARN", msg);
+}
+
+static bool get_time_str(char* buf, size_t size) {
+  if (!buf || size == 0) return false;
+
+#ifdef _WIN32
+  SYSTEMTIME st;
+  if (aload(isLocalTime) == 1) GetLocalTime(&st);
+  else GetSystemTime(&st);
+  int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03d",
+                   st.wYear, // 2026
+                   st.wMonth, // 1
+                   st.wDay, // 21
+                   st.wHour, // 22
+                   st.wMinute, // 16
+                   st.wSecond, // 40
+                   st.wMilliseconds // 450
+    );
+  if (n <= 0 || (size_t)n >= size) return false;
+#else // unix
+  // get nanosec with struct
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+
+  // get other fields except ns
+  struct tm tm_val;
+  if (aload(isLocalTime) == 1) localtime_r(&ts.tv_sec, &tm_val);
+  else gmtime_r(&ts.tv_sec, &tm_val);
+
+  long ms = ts.tv_nsec / 1000000; // nanosecond -> millisecond
+
+  int n = snprintf(buf, size, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
+                   tm_val.tm_year + 1900,
+                   tm_val.tm_mon + 1,
+                   tm_val.tm_mday,
+                   tm_val.tm_hour,
+                   tm_val.tm_min,
+                   tm_val.tm_sec,
+                   ms
+    );
+  if (n <= 0 || (size_t)n >= size) return false;
+  //            ^^^^^^^^^^^^^^^^^, buffer has not enough capacity
+#endif // _WIN32
+  return true;
+}
+
+static int check_dir(const char* path) {
+#ifdef _WIN32
+  DWORD attr = GetFileAttributesA(path);
+  if (attr == INVALID_FILE_ATTRIBUTES) return 0; // does not exists
+  if (attr & FILE_ATTRIBUTE_DIRECTORY) return 1; // exists AND directory (valid)
+  return -1; // exists but is not directory
+#else
+  struct stat st;
+  if (stat(path, &st) != 0) return 0; // not exists
+  if (S_ISDIR(st.st_mode)) return 1; // exists AND directory (valid)
+  return -1; // exists but not a directory
+#endif
+}
+
+static bool mkdir_p(const char *path) {
+  if (!path || !*path) return false;
+
+  char tmp[PATH_MAX];
+  size_t size = sizeof(tmp);
+  int n = snprintf(tmp, size, "%s", path);
+  if (n < 0 || (size_t)n >= size) return false;
+ 
+  // go char by char
+  // it expects "/" at the end to create valid directories
+  // if you dont provide trailing slash, you cannot make the folder at the end
+  for (char *p = tmp; *p; p++) {
+    if (*p != PATH_SEP) continue;
+    if (p != tmp && *(p-1) == PATH_SEP) continue; // skip double slashes
+    *p = '\0'; // give MKDIR string that we passed before
+    if (!*tmp) { // tmp is empty, skip
+      *p = PATH_SEP;
+      continue;
+    }
+    LG_DEBUG("Trying to create: %s", tmp);
+    int status = MKDIR(tmp);
+    // swallow already exists errors
+    if (status != 0 && errno != EEXIST) {
+      LG_DEBUG_ERR("Failed to create path: %s", path);
+      return false;
+    }
+    *p = PATH_SEP; // fix that \0
+  }
+
+  LG_DEBUG("Trying to create: %s", tmp);
+  return MKDIR(tmp) == 0 || errno == EEXIST;
 }
 
 #endif // LOGGER_IMPLEMENTATION

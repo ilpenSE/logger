@@ -14,7 +14,7 @@ class LoggerStream {
   ~LoggerStream() {
     const std::string s = m_buffer.str();
     if (!s.empty()) {
-      lg_log(m_level.c_str(), s.c_str());
+      lg_log_s(m_level.c_str(), s.c_str());
     }
   }
 

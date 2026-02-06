@@ -8,9 +8,9 @@
 ![Flexible](https://img.shields.io/badge/flexible-blue?style=for-the-badge)
 ![STB-Style](https://img.shields.io/badge/stb-single%20header-yellow?style=for-the-badge)
 
-This Logger supports apple systems (APPLE) and linux.
+This Logger supports apple systems, windows and unix or unix-like systems.
 
-You can build and generate `.so` and `.dylib` on your machine.
+You can build and generate `.so`, `.dll` and `.dylib` on your machine.
 
 It does only have header files with implementation, but if you define LOGGER_IMPLEMENTATION during compilation of header, you can get shared object.
 
@@ -49,22 +49,35 @@ lg_init("logs", conf);
 
 ## Library Linking/Usage
 
-Use STB style header (`logger.h`) in any language that supports C ABI. (C, Rust, C++ etc.)
+Compile STB style header (`logger.h`) and use in any language that supports C ABI. (C, Rust, C++ etc.)
 
-If you're not using C/C++ and want to use this library, you can compile it like this:
+You can generate shared objects with these commands:
 
-(for GCC and UNIX)
+(These commands generate shared objects at build folder)
+
+For GCC and UNIX:
 ```bash
-cc -x c -c logger.h -std=c11 -pthread -DLOGGER_IMPLEMENTATION
+make
 ```
-
-Or you can generate shared object:
-
+or
 ```bash
-gcc -shared -fPIC -x c -DLOGGER_IMPLEMENTATION logger.h -o liblogger.so
+make debug=1
 ```
+if you wanna have debug information
 
-And you can use loggerstream.hpp if you use C++ in your project or app to enable this kind of stuff:
+For MSVC and WINDOWS:
+```bash
+build.bat
+```
+or
+```bash
+build.bat debug
+```
+if you wanna have debug information
+
+## C++ Exclusives
+
+Use loggerstream.hpp if you use C++ in your project or app to enable this kind of stuff:
 ```cpp
 sinfo << "Hello, World!";
 serr  << "Error occured!";
