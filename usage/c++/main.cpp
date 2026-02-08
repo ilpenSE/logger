@@ -84,8 +84,20 @@ void stress_test() {
   testFile << diff.count() << '\n';
 }
 
-int myFormatter(const char* time_str, const char* level, const char* msg, char* out, size_t size) {
-	return snprintf(out, size, "%s {%s} %s\n", time_str, level, msg);
+void myFormatter(const char* time_str, const lg_log_level level,
+								const char* msg, lg_msg_pack* pack) {
+	const char* lvlstr = lg_lvl_to_str(level);
+	if (pack->stdout_str.data != NULL && pack->stdout_str.cap != 0) {
+		str_format_into(
+			&pack->stdout_str,
+			"%s {%s} %s\n", time_str, lvlstr, msg);
+	}
+	
+	if (pack->file_str.data != NULL && pack->file_str.cap != 0) {
+		str_format_into(
+			&pack->file_str,
+			"%s {%s} %s\n", time_str, lvlstr, msg);
+	}
 }
 
 int main() {
@@ -96,7 +108,7 @@ int main() {
     .printStdout = true,
 		.logFormatter = myFormatter
 	};
-  if (lg_init(path.c_str(), conf) != 1) {
+  if (!lg_init(path.c_str(), conf)) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
@@ -139,7 +151,7 @@ int main() {
 exit:
   testFile.close();
   
-  if (lg_destruct() != 1) {
+  if (!lg_destruct()) {
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }

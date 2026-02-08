@@ -7,23 +7,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::fmt;
 
-// lg_result_t enum
-#[repr(i32)]
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum LgResult {
-  FatalError = -1,
-  RuntimeError = 0,
-  Success = 1,
-  NotValidDir = 2,
-  NotOpenFile = 3,
-  RingFull = 4,
-}
-
-impl fmt::Display for LgResult {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", *self as i32)
-  }
-}
+// FIXME: TO BE IMPLEMENTED
 
 // logger config struct
 #[repr(C)]
