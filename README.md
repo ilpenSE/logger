@@ -24,7 +24,40 @@ Since it is written in C, you can port this library every fucking programming la
 - [C++ Stream (<<) support](./loggerstream.hpp)
 - [Usage in C](usage/c)
 - [Usage in C++](usage/c++)
+- [Usage in Python](usage/python)
+- [Usage in Rust](usage/rust)
+- [Usage in JS](usage/javascript)
 - [Header-only in C++, exported via C ABI (Deprecated)](https://github.com/ilpenSE/logger/tree/deprecated)
+
+## Multiple Instances
+
+- This library comes with multiple-instance support since 3.0
+- You can set or get active (current) instance with `lg_get_active_instance` and `lg_set_active_instance`
+- `lg_init` tries to set active instance if active's NULL
+- `lg_destroy` DOES NOT make active instance NULL and frees the memory, it just clears its fields, shutdowns writer thread and flags it is dead (isAlive=0). You have to free or allocate your memory (we have `lg_alloc` and `lg_free` you can use them in anywhere else)
+- You can make `lg_destroy` parameter NULL and it tries to destroy the active instance like you dont have to do `lg_destroy(lg_get_active_instance())` 
+
+```c
+LoggerConfig cfg = (LoggerConfig) {
+  .localTime=1,.printStdout=1.logFormatter=NULL};
+Logger* lg1 = lg_alloc();
+Logger* lg2 = lg_alloc();
+
+lg_init(lg1, "logs1", cfg);
+lg_init(lg2, "logs2", cfg);
+// active: lg1
+
+lg_info("This is in logs1 folder.");
+lg_infoi(lg2, "This is in logs2 folder.");
+// the "i" part stands for "explicit instance"
+
+lg_infoi(NULL, "This is in logs2 folder.");
+// this also works and it's using active one
+
+lg_finfo("Hello from function"); // normal functions, used at FFIs
+```
+
+- NOTE: Every logger instance initialization creates a thread which is expensive to have.
 
 ## Customization
 
