@@ -6,7 +6,7 @@ SRC := main.c
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
+$(TARGET): $(SRC) ../../logger.h
 	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 clean:

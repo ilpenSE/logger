@@ -5,3 +5,7 @@ app.exe
 appv
 appv.exe
 build
+__pycache__
+Cargo.lock
+target
+node_modules

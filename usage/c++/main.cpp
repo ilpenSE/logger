@@ -29,7 +29,7 @@ void log_something(int i) {
 
 void destruct_test() {
   sinfo << "Log before destruct";
-  if (!lg_destruct()) {
+  if (!lg_destroy(nullptr)) {
     std::cerr << "somehow logger destruct failed\n";
     return;
   }
@@ -82,6 +82,7 @@ void stress_test() {
   std::cout << "Elapsed time: " << diff.count() << " s\n";
   if (!testFile) return;
   testFile << diff.count() << '\n';
+	testFile.flush();
 }
 
 void myFormatter(const char* time_str, const lg_log_level level,
@@ -101,14 +102,15 @@ void myFormatter(const char* time_str, const lg_log_level level,
 }
 
 int main() {
-  std::string path = "logs";
+  Logger* lg = (Logger*)calloc(1, sizeof(Logger));
 
 	LoggerConfig conf = {
 		.localTime = true,
     .printStdout = true,
 		.logFormatter = myFormatter
 	};
-  if (!lg_init(path.c_str(), conf)) {
+
+  if (!lg_init(lg, "logs", conf)) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
@@ -131,7 +133,8 @@ int main() {
 			multi_thread();
 			break;
 		case 2:
-      if (!testFile) testFile = std::ofstream("time.txt", std::ios::app);
+      if (!testFile.is_open())
+				testFile = std::ofstream("time.txt", std::ios::app);
 			stress_test();
 			break;
 		case 3:
@@ -151,10 +154,11 @@ int main() {
 exit:
   testFile.close();
   
-  if (!lg_destruct()) {
+  if (!lg_destroy(nullptr)) {
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }
 
+  free(lg);
   return 0;
 }

@@ -11,7 +11,7 @@ bad_lines = 0
 line_count = 0
 other_lines = 0
 
-logf = "logs/2026.01.27-16.48.17.105.log"
+logf = "logs/2026.02.19-18.44.47.329.log"
 with open(logf, "r", errors="replace") as f:
   for i, line in enumerate(f, 1):
     line_count += 1
@@ -21,8 +21,10 @@ with open(logf, "r", errors="replace") as f:
       i = int(m.group(2))
       per_thread[tid].add(i)
     if not line.endswith("\n"):
+      print(f"Bad line ({i}): \"{line}\"")
       bad_lines += 1
-    if not line.startswith("2026.01.27"):
+    if not line.startswith("2026.02.19"):
+      print(f"Other line ({i}): \"{line}\"")
       other_lines += 1
     
 missing_total = 0

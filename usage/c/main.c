@@ -4,6 +4,7 @@
 #include "logger.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 // custom formatter usage (dont forget to add \n)
@@ -20,26 +21,28 @@ void myFormatter(const char* time_str, const lg_log_level level,
 }
 
 int main() {
+  Logger* lg = (Logger*)calloc(1, sizeof(Logger));
+
 	LoggerConfig conf = {
 		.localTime = true,
     .printStdout = true,
     .logFormatter = NULL
 	};
 
-	if (!lg_init("logs", conf)) {
+	if (!lg_init(lg, "logs/", conf)) {
 		perror("logs init failed");
 		return -1;
 	}
 
 	lg_info("the informatics");
-	lg_custom("customized");
-	linfo("minified info");
-  llog(ERROR, "some error");
-  llog(WARNING, "some warning");
-  
-	if (!lg_destruct()) {
+  lg_error("the errormatics");
+  lg_warn("the warningmatics");
+
+	if (!lg_destroy(lg)) {
 		perror("logger destruct failed");
 		return -1;
 	}
+
+  free(lg);
 	return 0;
 }
