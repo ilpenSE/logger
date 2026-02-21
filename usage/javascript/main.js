@@ -1,4 +1,4 @@
-import logger from "./liblogger.js";
+import logger, { LG_DROP } from "./liblogger.js";
 
 function cstr(string) {
   return Buffer.from(string + "\0");
@@ -6,7 +6,7 @@ function cstr(string) {
 
 const lg = logger.lg_alloc();
 // isLocaltime and isStdout provided, custom log func cannot be implemented
-if (logger.lg_init_flat(lg, cstr("logs"), 1, 1) !== 1) {
+if (logger.lg_init_flat(lg, cstr("logs"), true, true, LG_DROP) !== 1) {
   console.error("Logger init failed");
   process.exit(1);
 }

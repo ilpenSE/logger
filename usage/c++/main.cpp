@@ -10,19 +10,19 @@
 #include "loggerstream.hpp"
 
 void hello() {
-	std::cout << "====== LOGGER USAGE TEST ======\n";
+  std::cout << "====== LOGGER USAGE TEST ======\n";
   std::cout << "Choose a test:\n";
   std::cout << "[0] Simple Test\n";
   std::cout << "[1] Multi-thread Test\n";
   std::cout << "[2] Stress Test\n";
   std::cout << "[3] Use-after-destruct Test\n";
-	std::cout << "[4] Print this message\n";
+  std::cout << "[4] Print this message\n";
   std::cout << "[5] Exit\n";
 }
 
 void log_something(int i) {
-	auto tid = std::this_thread::get_id(); 
-	size_t id = std::hash<std::thread::id>{}(tid);
+  auto tid = std::this_thread::get_id(); 
+  size_t id = std::hash<std::thread::id>{}(tid);
   sinfo << "Hello from stream, thread" << id << ", i =" << i;
   lg_info("Hello from API! thread %zu , i = %d", id, i);
 }
@@ -82,40 +82,41 @@ void stress_test() {
   std::cout << "Elapsed time: " << diff.count() << " s\n";
   if (!testFile) return;
   testFile << diff.count() << '\n';
-	testFile.flush();
+  testFile.flush();
 }
 
 void myFormatter(const char* time_str, const lg_log_level level,
-								const char* msg, lg_msg_pack* pack) {
-	const char* lvlstr = lg_lvl_to_str(level);
-	if (pack->stdout_str.data != NULL && pack->stdout_str.cap != 0) {
-		str_format_into(
-			&pack->stdout_str,
-			"%s {%s} %s\n", time_str, lvlstr, msg);
-	}
-	
-	if (pack->file_str.data != NULL && pack->file_str.cap != 0) {
-		str_format_into(
-			&pack->file_str,
-			"%s {%s} %s\n", time_str, lvlstr, msg);
-	}
+                const char* msg, lg_msg_pack* pack) {
+  const char* lvlstr = lg_lvl_to_str(level);
+  if (pack->stdout_str.data != NULL && pack->stdout_str.cap != 0) {
+    lg_str_format_into(
+      &pack->stdout_str,
+      "%s {%s} %s\n", time_str, lvlstr, msg);
+  }
+  
+  if (pack->file_str.data != NULL && pack->file_str.cap != 0) {
+    lg_str_format_into(
+      &pack->file_str,
+      "%s {%s} %s\n", time_str, lvlstr, msg);
+  }
 }
 
 int main() {
-  Logger* lg = (Logger*)calloc(1, sizeof(Logger));
+  Logger* lg = lg_alloc();
 
-	LoggerConfig conf = {
-		.localTime = true,
+  LoggerConfig conf = {
+    .localTime = true,
     .printStdout = true,
-		.logFormatter = myFormatter
-	};
+    .policy = LG_BLOCK,
+    .logFormatter = myFormatter
+  };
 
   if (!lg_init(lg, "logs", conf)) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
 
-	hello();
+  hello();
 
   int op = 0;
   while (1) {
@@ -126,28 +127,28 @@ int main() {
       continue;
     }
     switch (op) {
-		case 0:
-			simple_test();
-			break;
-		case 1:
-			multi_thread();
-			break;
-		case 2:
+    case 0:
+      simple_test();
+      break;
+    case 1:
+      multi_thread();
+      break;
+    case 2:
       if (!testFile.is_open())
-				testFile = std::ofstream("time.txt", std::ios::app);
-			stress_test();
-			break;
-		case 3:
-			destruct_test();
-			break;
-		case 4:
-			hello();
-			break;
-		case 5:
-			goto exit;
-		default:
-			std::cout << "Please enter a valid operation!\n";;
-			break;
+        testFile = std::ofstream("time.txt", std::ios::app);
+      stress_test();
+      break;
+    case 3:
+      destruct_test();
+      break;
+    case 4:
+      hello();
+      break;
+    case 5:
+      goto exit;
+    default:
+      std::cout << "Please enter a valid operation!\n";;
+      break;
     }
   }
 
@@ -159,6 +160,6 @@ exit:
     return -1;
   }
 
-  free(lg);
+  lg_free(lg);
   return 0;
 }

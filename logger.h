@@ -18,14 +18,15 @@
    #include "logger.h"
 
    int main() {
-   if (lg_init("logs", {.localTime=1, .printStdout=1 .logFormatter=NULL}) != 1) return 1;
+   Logger* lg = lg_alloc();
+   if (!lg_init(lg, "logs", {.localTime=1, .printStdout=1 .logFormatter=NULL})) return 1;
    char name[33];
    scanf("%32s", &name);
    lg_info("Hello, %s!", name);
    linfo("Hello, %s!", name);
    if (strcmp(name, "ilpeN") == 0)
      linfo("Hello, sir!");
-   if (lg_destruct() != 1) return 1;
+   if (!lg_destroy(lg)) return 1;
    }
 
    In this asynchronous logger, we have main and writer thread.
@@ -39,6 +40,11 @@
    you just dont get any dropped log. To see in where it dropped, you can define
    LOGGER_DEBUG in your compilation (with -DLOGGER_DEBUG) or runtime (#define LOGGER_DEBUG)
    
+   We have support for multi instances, but if you dont want to use multi instance,
+   just create and allocate an instance on heap (use lg_alloc())) and init it.
+   To destroy it, call lg_destroy() and free it (you can call lg_free())
+   If you are using non C/C++ language, you have to use lg_alloc and lg_free
+
    The config printStdout significantly slows down both of the threads
    if you're using this at prod, dont forget to make printStdout as 0
 
@@ -75,21 +81,37 @@ typedef enum {
 } lg_log_level;
 
 /*
-  The string struct, used at message pack
+  Log policies when ring buffer is full
+  LG_DROP (default): Drops the log when buffer is full, you lost some log messages
+  LG_BLOCK: Waits until writer advances, you dont lose any message but main thread'll be blocked
+  LG_SMASH_OLDEST: Remove oldest one and keep going
+  LG_PRIORITY_BASED: Drop info/warnings, keep errors (when error comes, block the main thread)
 */
-typedef struct {
+typedef enum {
+  LG_DROP = 1 << 0,
+  LG_BLOCK = 1 << 1,
+  LG_SMASH_OLDEST = 1 << 2,
+  LG_PRIORITY_BASED = 1 << 3,
+} lg_log_policy;
+
+typedef struct Logger Logger;
+typedef struct lg_string lg_string;
+typedef struct lg_msg_pack lg_msg_pack;
+
+/*
+  The string struct, used at message pack
+  We use lg_string to not collide with str.h
+*/
+struct lg_string {
   char* data;
   size_t cap;
   size_t len;
-} string;
-
-typedef struct Logger Logger;
-typedef struct lg_msg_pack lg_msg_pack;
+};
 
 // holds 2 dynamic strings
 struct lg_msg_pack {
-  string stdout_str;
-  string file_str;
+  lg_string stdout_str;
+  lg_string file_str;
 };
 
 typedef void (*log_formatter_t)(const char* time_str, const lg_log_level level, const char* msg,
@@ -109,6 +131,7 @@ typedef void (*log_formatter_t)(const char* time_str, const lg_log_level level, 
 typedef struct {
   int localTime;
   int printStdout;
+  lg_log_policy policy;
   log_formatter_t logFormatter;
 } LoggerConfig;
 
@@ -133,10 +156,10 @@ extern "C" {
 LOGGER_API int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);
 
 /*
-	lg_init but Flattened the config struct (mostly used at FFIs)
+  lg_init but Flattened the config struct (mostly used at FFIs)
 */
 LOGGER_API int lg_init_flat(Logger* inst, const char* logs_dir,
-														int local_time, int print_stdout, log_formatter_t log_formatter);
+                            int local_time, int print_stdout, lg_log_policy policy, log_formatter_t log_formatter);
 
 /*
   Destroys specific logger instance and closes the log file that the instance working on
@@ -183,15 +206,21 @@ LOGGER_API const char* lg_lvl_to_str(const lg_log_level level);
 /*
   Simply acts like snprintf and applies it to the string data
 */
-LOGGER_API void str_format_into(string* s, const char* fmt, ...);
+LOGGER_API void lg_str_format_into(lg_string* s, const char* fmt, ...);
 
 /*
-	For FFI, Calls calloc and returns it
+	lg_str_format_into but already formatted strings
+	Can be used at FFIs - because you cannot use variadics in ffi
+*/
+LOGGER_API void lg_str_write_into(lg_string* s, const char* already_formatted_str);
+
+/*
+  For FFI, Calls calloc and returns it
 */
 LOGGER_API Logger* lg_alloc();
 
 /*
-	For FFI, Calls free
+  For FFI, Calls free
 */
 LOGGER_API void lg_free(Logger* inst);
 
@@ -326,6 +355,7 @@ static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt,
 #ifdef _WIN32
   #include <windows.h>
   #include <direct.h> // _mkdir
+  #define lg_yield() SwitchToThread()
 
   #define MKDIR(path) _mkdir(path)
   #define PATH_SEP '\\'
@@ -387,8 +417,13 @@ static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt,
   #include <sys/stat.h> // for dirs
   #include <sys/time.h> // for time
   #include <pthread.h>
+  #include <sched.h>
+
   #define MKDIR(path) mkdir(path, 0755)
   #define PATH_SEP '/'
+
+  #define lg_yield() sched_yield()
+
 #endif // _WIN32
 
 // C and C++ compatibility bullshit
@@ -415,6 +450,7 @@ struct Logger {
   ATOMIC(bool) isPrintStdout;
   FILE* logFile;
   log_formatter_t customLogFunc;  
+  lg_log_policy logPolicy;
 
   // global mutex to prevent race conditions
   pthread_mutex_t mtx;
@@ -438,10 +474,10 @@ static void* lg_consumer(void* arg) {
     pthread_mutex_lock(&inst->wmtx);
     while (aload(inst->wcurr) == aload(inst->pcurr) && aload(inst->isAlive)) {
       pthread_cond_wait(&inst->cond, &inst->wmtx);
-		}
+    }
     pthread_mutex_unlock(&inst->wmtx);
-		
-		size_t w = aload(inst->wcurr);
+    
+    size_t w = aload(inst->wcurr);
     size_t p = aload(inst->pcurr);
     int alive = aload(inst->isAlive);
     bool is_stdout = aload(inst->isPrintStdout);
@@ -498,12 +534,13 @@ static void* lg_consumer(void* arg) {
 static Logger* active_instance = NULL;
 
 int lg_init_flat(Logger* inst, const char* logs_dir,
-														int local_time, int print_stdout, log_formatter_t log_formatter) {
+                 int local_time, int print_stdout, lg_log_policy policy, log_formatter_t log_formatter) {
   LoggerConfig cfg = {
-		.localTime = local_time,
-		.printStdout = print_stdout,
-		.logFormatter = log_formatter
-	};
+    .localTime = local_time,
+    .printStdout = print_stdout,
+    .policy = policy,
+    .logFormatter = log_formatter
+  };
   return lg_init(inst, logs_dir, cfg);
 }
 
@@ -515,6 +552,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config) {
   astore(inst->isPrintStdout, config.printStdout != 0);
   astore(inst->isLocalTime, config.localTime != 0);
   inst->customLogFunc = config.logFormatter;
+  inst->logPolicy = config.policy;
 
   atomic_init(&inst->pcurr, 0);
   atomic_init(&inst->wcurr, 0);
@@ -592,15 +630,15 @@ static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt,
 // main log function, invokes the writer - used at FFIs
 // accepts format-resolved message to print
 static int lg_producer(Logger* inst, const lg_log_level level, const char* msg) {
-  if (!msg || !level) return 0;
+  if (!msg) return 0;
 
   if (!inst) {
     if (active_instance) inst = active_instance;
     else {
-			LG_DEBUG_ERR("There is no active instance!");
-			return 0;
-		}
-	}
+      LG_DEBUG_ERR("There is no active instance!");
+      return 0;
+    }
+  }
 
   // doesnt log when its not alive
   if (!aload(inst->isAlive)) {
@@ -621,23 +659,53 @@ static int lg_producer(Logger* inst, const lg_log_level level, const char* msg) 
   // slot overflow check
   size_t w = aload(inst->wcurr);
   if (p - w >= LOGGER_RING_SIZE) {
-    // buffer full, policy: drop
+    // buffer full, policies: DROP (default), BLOCK, OVERWRITE, PRIORITY BASED
+    switch (inst->logPolicy) {
+    case LG_DROP: goto drop;
+    case LG_BLOCK: goto block;
+    case LG_SMASH_OLDEST: goto smash_oldest;
+    case LG_PRIORITY_BASED: goto priority_based;
+    default: LG_DEBUG_ERR("Unkown log policy, defaulting to drop"); goto drop;
+    }
+
+  drop:
     LG_DEBUG_ERR("Ring buffer is full, dropping the log");
     pthread_mutex_unlock(&inst->mtx);
     return 0;
+
+  block:
+    while (aload(inst->pcurr) - aload(inst->wcurr) >= LOGGER_RING_SIZE) {
+      pthread_mutex_unlock(&inst->mtx);
+      lg_yield();
+      pthread_mutex_lock(&inst->mtx);
+      w = aload(inst->wcurr);
+      p = aload(inst->pcurr);
+    }
+    goto policy_done;
+
+  smash_oldest:
+    astore(inst->wcurr, w + 1);
+    LG_DEBUG_ERR("Ring buffer full, overwriting oldest entry");
+    goto policy_done;
+
+  priority_based:
+    if (level != LG_ERROR) goto drop;
+    else goto block;
   }
+policy_done:
   pthread_mutex_unlock(&inst->mtx);
 
   char buf[LOGGER_MAX_MSG_SIZE];
+  size_t bufsz = sizeof(buf);
   size_t buflen = 0;
-  int n = snprintf(buf, sizeof(buf), "%s", msg);
+  int n = snprintf(buf, bufsz, "%s", msg);
   if (n < 0) return 0;
 
   // truncating the string
-  if ((size_t)n >= sizeof(buf)) {
-    buf[sizeof(buf) - 2] = '\n';
-    buf[sizeof(buf) - 1] = '\0';
-    buflen = sizeof(buf) - 1;
+  if ((size_t)n >= bufsz) {
+    buf[bufsz - 2] = '\n';
+    buf[bufsz - 1] = '\0';
+    buflen = bufsz - 1;
   } else {
     buflen = (size_t)n;
   }
@@ -730,15 +798,15 @@ int lg_is_alive(const Logger* inst) {
 }
 
 Logger* lg_alloc() {
-	Logger* tmp = (Logger*)calloc(1, sizeof(Logger));
-	if (!tmp) {
-		LG_DEBUG_ERR("Cannot allocate Logger instance!");
-		return NULL;
-	}
-	return tmp;
+  Logger* tmp = (Logger*)calloc(1, sizeof(Logger));
+  if (!tmp) {
+    LG_DEBUG_ERR("Cannot allocate Logger instance!");
+    return NULL;
+  }
+  return tmp;
 }
 void lg_free(Logger* inst) {
-	free(inst);
+  free(inst);
 }
 
 int lg_flogi(Logger* inst, const lg_log_level level, const char* msg) {
@@ -872,7 +940,7 @@ static bool mkdir_p(const char *path) {
   return MKDIR(tmp) == 0 || errno == EEXIST;
 }
 
-void str_format_into(string* s, const char* fmt, ...) {
+void lg_str_format_into(lg_string* s, const char* fmt, ...) {
   if (!s) return;
   if (!s->data || s->cap == 0) {
     s->len = 0;
@@ -900,6 +968,11 @@ void str_format_into(string* s, const char* fmt, ...) {
   }
 }
 
+void lg_str_write_into(lg_string* s, const char* str) {
+	if (!str) return;
+	return lg_str_format_into(s, "%s", str);
+}
+
 // message formatter helper - used at consumer
 static void format_msg(const char* time_str, const lg_log_level level,
                       const char* msg, lg_msg_pack* pack) {
@@ -913,7 +986,7 @@ static void format_msg(const char* time_str, const lg_log_level level,
     default: clr = CLR_RST; break;
     }
       
-    str_format_into(
+    lg_str_format_into(
       &pack->stdout_str,
       CLR_AQUA "%s %s[%s]" CLR_RST " %s\n",
       time_str, clr, lg_lvl_to_str(level), msg
@@ -923,7 +996,7 @@ static void format_msg(const char* time_str, const lg_log_level level,
   // prepairing file msg
   if (pack->file_str.data != NULL && pack->file_str.cap != 0) {
     // no escape chars in file
-    str_format_into(
+    lg_str_format_into(
       &pack->file_str,
       "%s [%s] %s\n",
       time_str, lg_lvl_to_str(level), msg
