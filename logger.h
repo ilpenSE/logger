@@ -209,8 +209,8 @@ LOGGER_API const char* lg_lvl_to_str(const lg_log_level level);
 LOGGER_API void lg_str_format_into(lg_string* s, const char* fmt, ...);
 
 /*
-	lg_str_format_into but already formatted strings
-	Can be used at FFIs - because you cannot use variadics in ffi
+  lg_str_format_into but already formatted strings
+  Can be used at FFIs - because you cannot use variadics in ffi
 */
 LOGGER_API void lg_str_write_into(lg_string* s, const char* already_formatted_str);
 
@@ -969,8 +969,8 @@ void lg_str_format_into(lg_string* s, const char* fmt, ...) {
 }
 
 void lg_str_write_into(lg_string* s, const char* str) {
-	if (!str) return;
-	return lg_str_format_into(s, "%s", str);
+  if (!str) return;
+  return lg_str_format_into(s, "%s", str);
 }
 
 // message formatter helper - used at consumer

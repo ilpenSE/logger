@@ -45,7 +45,7 @@ unsafe extern "C" fn myFormatter(
 }
 
 fn main() {
-	unsafe { // useful main func
+  unsafe { // useful main func
     let logs_dir = CString::new("logs").unwrap();
     let formatter: LogFormatterT = myFormatter;
 
