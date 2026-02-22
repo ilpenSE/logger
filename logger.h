@@ -57,9 +57,7 @@
 
 // for cross-platform compatibility
 #ifdef _WIN32
-  #ifdef LOGGER_IMPLEMENTATION
-   #define LOGGER_API 
-  #elif defined(LOGGER_BUILD)
+  #ifdef LOGGER_BUILD // define this when generating DLL
     #define LOGGER_API __declspec(dllexport)
   #else
     #define LOGGER_API __declspec(dllimport)
@@ -175,18 +173,18 @@ LOGGER_API int lg_is_alive(const Logger* instance);
   Wrapper log functions for FFI, if you dont use C/C++ or
   using your language's FFI, you must use these:
 */
-int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);
-int lg_flog(const lg_log_level level, const char* msg);
+LOGGER_API int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);
+LOGGER_API int lg_flog(const lg_log_level level, const char* msg);
 
 // Explicit instances
-int lg_finfoi(Logger* inst, const char* msg);
-int lg_ferrori(Logger* inst, const char* msg);
-int lg_fwarni(Logger* inst, const char* msg);
+LOGGER_API int lg_finfoi(Logger* inst, const char* msg);
+LOGGER_API int lg_ferrori(Logger* inst, const char* msg);
+LOGGER_API int lg_fwarni(Logger* inst, const char* msg);
 
 // Implicit instances (uses active one)
-int lg_finfo(const char* msg);
-int lg_ferror(const char* msg);
-int lg_fwarn(const char* msg);
+LOGGER_API int lg_finfo(const char* msg);
+LOGGER_API int lg_ferror(const char* msg);
+LOGGER_API int lg_fwarn(const char* msg);
 
 /*
   Sets active Logger instance
@@ -695,30 +693,20 @@ static int lg_producer(Logger* inst, const lg_log_level level, const char* msg) 
 policy_done:
   pthread_mutex_unlock(&inst->mtx);
 
-  char buf[LOGGER_MAX_MSG_SIZE];
-  size_t bufsz = sizeof(buf);
-  size_t buflen = 0;
-  int n = snprintf(buf, bufsz, "%s", msg);
-  if (n < 0) return 0;
+  // get msg length with strlen
+  size_t msglen = strlen(msg);
+  if (msglen > LOGGER_MAX_MSG_SIZE)
+    return 0;
 
-  // truncating the string
-  if ((size_t)n >= bufsz) {
-    buf[bufsz - 2] = '\n';
-    buf[bufsz - 1] = '\0';
-    buflen = bufsz - 1;
-  } else {
-    buflen = (size_t)n;
-  }
-  
   pthread_mutex_lock(&inst->mtx);
-  // copy message with guarenteeing zero
-  memcpy(inst->ring[next].msg, buf, buflen);
-  inst->ring[next].msg[buflen] = '\0';
-  // copy time string
+  // copy message and put zero on ring
+  memcpy(inst->ring[next].msg, msg, msglen);
+  inst->ring[next].msg[msglen] = '\0';
+  // copy time string (already zero guarenteed)
   memcpy(inst->ring[next].time_str, time_str, sizeof(time_str));
   // copy other things
   inst->ring[next].level = level;
-  inst->ring[next].length = buflen;
+  inst->ring[next].length = msglen;
 
   // advance producer
   astore(inst->pcurr, p + 1);

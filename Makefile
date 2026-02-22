@@ -22,6 +22,8 @@ ifeq ($(windows),1)
 	CC = x86_64-w64-mingw32-gcc
 	CFLAGS += -DLOGGER_BUILD
 	SHARED_OBJECT = $(BUILD_FOLDER)/logger.dll
+else
+	CFLAGS += -fvisibility=hidden
 endif
 
 all: $(SHARED_OBJECT)
@@ -36,7 +38,7 @@ $(OBJECT): $(HEADER) | $(BUILD_FOLDER)
 
 # Generating shared object (.so/.dll) file
 $(SHARED_OBJECT): $(OBJECT) | $(BUILD_FOLDER)
-	$(CC) -shared -pthread -o $(SHARED_OBJECT) $(OBJECT)
+	$(CC) -shared -o $(SHARED_OBJECT) $(OBJECT)
 
 clean:
 	rm -rf $(BUILD_FOLDER)

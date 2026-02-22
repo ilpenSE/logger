@@ -26,7 +26,7 @@ unsafe extern "C" fn myFormatter(
 ) {
   unsafe {
     let formatted = CString::new(format!(
-      "{} {:?} {}\n",
+      "{} {}: {}\n",
       cstr_to_string(time_str),
       cstr_to_string(lg_lvl_to_str(level)),
       cstr_to_string(msg),

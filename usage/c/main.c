@@ -28,7 +28,7 @@ int main() {
     .localTime = true,
     .printStdout = true,
     .policy = LG_DROP,
-    .logFormatter = NULL
+    .logFormatter = NULL,
   };
 
   if (!lg_init(lg, "logs", conf)) {
