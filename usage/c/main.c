@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+void do_something();
+
 // custom formatter usage (dont forget to add \n)
 void myFormatter(const char* time_str, const lg_log_level level,
                  const char* msg, lg_msg_pack* pack) {
@@ -39,6 +41,8 @@ int main() {
   lg_info("the informatics");
   lg_error("the errormatics");
   lg_warn("the warningmatics");
+
+  do_something();
 
   if (!lg_destroy(lg)) {
     perror("logger destruct failed");

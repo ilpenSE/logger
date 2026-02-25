@@ -2,7 +2,7 @@ CC := gcc
 CFLAGS := -Wall -Wextra -I../..
 
 TARGET := app
-SRC := main.c
+SRC := test.c main.c
 
 all: $(TARGET)
 

@@ -20,10 +20,7 @@ endif
 # Windows config
 ifeq ($(windows),1)
 	CC = x86_64-w64-mingw32-gcc
-	CFLAGS += -DLOGGER_BUILD
 	SHARED_OBJECT = $(BUILD_FOLDER)/logger.dll
-else
-	CFLAGS += -fvisibility=hidden
 endif
 
 all: $(SHARED_OBJECT)

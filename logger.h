@@ -55,15 +55,10 @@
    but if you use C, you have to use at least C11 standart
 */
 
-// for cross-platform compatibility
-#ifdef _WIN32
-  #ifdef LOGGER_BUILD // define this when generating DLL
-    #define LOGGER_API __declspec(dllexport)
-  #else
-    #define LOGGER_API __declspec(dllimport)
-  #endif
-#else // unix:
-  #define LOGGER_API __attribute__((visibility("default")))
+#ifdef __cplusplus
+  #define LOGGERDEF extern "C"
+#else
+  #define LOGGERDEF extern
 #endif
 
 // some global includes here
@@ -133,10 +128,6 @@ typedef struct {
   log_formatter_t logFormatter;
 } LoggerConfig;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
    Main initializer function, Creates Logger instance
    @param logs_dir: const char*, Points a directory path
@@ -151,12 +142,12 @@ extern "C" {
    You dont have to use lg_destroy() if init failed. Because if init failed, isAlive set to be 0
    and lg_destroy() simply wont work if the logger instance is dead
 */
-LOGGER_API int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);
+LOGGERDEF int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);
 
 /*
   lg_init but Flattened the config struct (mostly used at FFIs)
 */
-LOGGER_API int lg_init_flat(Logger* inst, const char* logs_dir,
+LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir,
                             int local_time, int print_stdout, lg_log_policy policy, log_formatter_t log_formatter);
 
 /*
@@ -164,67 +155,78 @@ LOGGER_API int lg_init_flat(Logger* inst, const char* logs_dir,
   if instance = NULL, it tries to destroy active one
   active_instance WONT become NULL
 */
-LOGGER_API int lg_destroy(Logger* instance);
+LOGGERDEF int lg_destroy(Logger* instance);
 
 // returns if logger is alive
-LOGGER_API int lg_is_alive(const Logger* instance);
+LOGGERDEF int lg_is_alive(const Logger* instance);
+
+/*
+  This is the main producer function. It accepts format
+  resolved message and manipulates it by customization.
+  It pushes final message to be printed to the ring buffer.
+  Then invokes the writer thread.
+*/
+LOGGERDEF int lg_producer(Logger* inst, const lg_log_level level, const char* msg);
+
+/*
+  This is the format resolver for lg_producer.
+  C macros use this. It's sensitive to "%" char.
+  It may crash your app if you're using this on FFI or wrongly on C
+*/
+LOGGERDEF int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...);
 
 /*
   Wrapper log functions for FFI, if you dont use C/C++ or
   using your language's FFI, you must use these:
 */
-LOGGER_API int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);
-LOGGER_API int lg_flog(const lg_log_level level, const char* msg);
+LOGGERDEF int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);
+LOGGERDEF int lg_flog(const lg_log_level level, const char* msg);
 
 // Explicit instances
-LOGGER_API int lg_finfoi(Logger* inst, const char* msg);
-LOGGER_API int lg_ferrori(Logger* inst, const char* msg);
-LOGGER_API int lg_fwarni(Logger* inst, const char* msg);
+LOGGERDEF int lg_finfoi(Logger* inst, const char* msg);
+LOGGERDEF int lg_ferrori(Logger* inst, const char* msg);
+LOGGERDEF int lg_fwarni(Logger* inst, const char* msg);
 
 // Implicit instances (uses active one)
-LOGGER_API int lg_finfo(const char* msg);
-LOGGER_API int lg_ferror(const char* msg);
-LOGGER_API int lg_fwarn(const char* msg);
+LOGGERDEF int lg_finfo(const char* msg);
+LOGGERDEF int lg_ferror(const char* msg);
+LOGGERDEF int lg_fwarn(const char* msg);
 
 /*
   Sets active Logger instance
 */
-LOGGER_API int lg_set_active_instance(Logger* inst);
+LOGGERDEF int lg_set_active_instance(Logger* inst);
 
 /*
   Gets active Logger instance
 */
-LOGGER_API Logger* lg_get_active_instance();
+LOGGERDEF Logger* lg_get_active_instance();
 
 /*
   Manipulates lg_log_level enum into string-literals (const char*)
 */
-LOGGER_API const char* lg_lvl_to_str(const lg_log_level level);
+LOGGERDEF const char* lg_lvl_to_str(const lg_log_level level);
 
 /*
   Simply acts like snprintf and applies it to the string data
 */
-LOGGER_API void lg_str_format_into(lg_string* s, const char* fmt, ...);
+LOGGERDEF void lg_str_format_into(lg_string* s, const char* fmt, ...);
 
 /*
   lg_str_format_into but already formatted strings
   Can be used at FFIs - because you cannot use variadics in ffi
 */
-LOGGER_API void lg_str_write_into(lg_string* s, const char* already_formatted_str);
+LOGGERDEF void lg_str_write_into(lg_string* s, const char* already_formatted_str);
 
 /*
   For FFI, Calls calloc and returns it
 */
-LOGGER_API Logger* lg_alloc();
+LOGGERDEF Logger* lg_alloc();
 
 /*
   For FFI, Calls free
 */
-LOGGER_API void lg_free(Logger* inst);
-
-#ifdef __cplusplus
-}
-#endif
+LOGGERDEF void lg_free(Logger* inst);
 
 // Log with an explicit logger instance
 #define lg_logi(instance, level, fmt, ...) \
@@ -309,21 +311,6 @@ static bool mkdir_p(const char *path);
 // default and custom formatter distinguisher, used at consumer
 static void format_msg(const char* time_str, const lg_log_level level,
                       const char* msg, lg_msg_pack* pack);
-
-/*
-  This is the main producer function. It accepts format
-  resolved message and manipulates it by customization.
-  It pushes final message to be printed to the ring buffer.
-  Then invokes the writer thread.
-*/
-static int lg_producer(Logger* inst, const lg_log_level level, const char* msg);
-
-/*
-  This is the format resolver for lg_producer.
-  C macros use this. It's sensitive to "%" char.
-  It may crash your app if you're using this on FFI or wrongly on C
-*/
-static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...);
 
 // i stands for "internal", so lgierror means logger internal error
 // lgierror - prints out where it happened
@@ -608,7 +595,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config) {
 
 // main log function with variadics - used at macros
 // gets resolved message and calls lg_producer
-static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...) {
+int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...) {
   if (!fmt) return 0;
 
   // variadic resolving
@@ -627,7 +614,7 @@ static int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt,
 
 // main log function, invokes the writer - used at FFIs
 // accepts format-resolved message to print
-static int lg_producer(Logger* inst, const lg_log_level level, const char* msg) {
+int lg_producer(Logger* inst, const lg_log_level level, const char* msg) {
   if (!msg) return 0;
 
   if (!inst) {
