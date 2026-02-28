@@ -39,8 +39,6 @@ export const LG_CUSTOM  = 1 << 3;
 
 // Log Policies
 export const LG_DROP           = 1 << 0;
-export const LG_BLOCK          = 1 << 1;
-export const LG_SMASH_OLDEST   = 1 << 2;
-export const LG_PRIORITY_BASED = 1 << 3;
+export const LG_SMASH_OLDEST   = 1 << 1;
 
 export default symbols;

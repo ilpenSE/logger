@@ -1,7 +1,7 @@
 # This makefile only works on UNIX/Linux
 # It can cross-compile windows DLL (if you have x86_64-w64-mingw32-gcc)
 CC ?= gcc
-CFLAGS = -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
+CFLAGS = -std=c99 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
 
 BUILD_FOLDER = build
 HEADER = logger.h

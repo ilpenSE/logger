@@ -107,7 +107,7 @@ int main() {
   LoggerConfig conf = {
     .localTime = true,
     .printStdout = true,
-    .policy = LG_BLOCK,
+    .policy = LG_DROP,
     .logFormatter = myFormatter
   };
 

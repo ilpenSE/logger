@@ -1,5 +1,5 @@
 #define LOGGER_IMPLEMENTATION
-//#define LOGGER_DEBUG
+#define LOGGER_DEBUG
 #define LOGGER_MINIFY_PREFIXES
 #include "logger.h"
 

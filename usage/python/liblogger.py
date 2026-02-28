@@ -17,9 +17,7 @@ typedef enum {
 
 typedef enum {
   LG_DROP = 1 << 0,
-  LG_BLOCK = 1 << 1,
-  LG_SMASH_OLDEST = 1 << 2,
-  LG_PRIORITY_BASED = 1 << 3,
+  LG_SMASH_OLDEST = 1 << 1,
 } lg_log_policy;
 
 typedef struct Logger Logger;

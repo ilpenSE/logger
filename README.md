@@ -10,13 +10,16 @@
 
 This Logger supports apple systems, windows and unix or unix-like systems.
 
+It requires minimum C99 version of C.
+
 You can build and generate `.so`, `.dll` and `.dylib` on your machine.
 
 It does only have header files with implementation, but if you define LOGGER_IMPLEMENTATION during compilation of header, you can get shared object.
 
 It is written in purely C. Contains C++ stuff for extra options (not included in logger.h, logger.h is pure C)
 
-Since it is written in C, you can port this library every fucking programming language supports C ABI (most of them) And if you worry about C standart, this library supports min C11. But you can compile this single header and turn it into shared object file.
+Since it is written in C, you can port this library every fucking programming language supports C ABI (most of them). 
+You can compile this single header and turn it into shared object file.
 
 ## Quick Links
 
@@ -39,7 +42,11 @@ Since it is written in C, you can port this library every fucking programming la
 
 ```c
 LoggerConfig cfg = (LoggerConfig) {
-  .localTime=1,.printStdout=1.logFormatter=NULL};
+  .localTime=1,
+  .printStdout=1,
+  .policy=LG_DROP,
+  .logFormatter=NULL
+  };
 Logger* lg1 = lg_alloc();
 Logger* lg2 = lg_alloc();
 

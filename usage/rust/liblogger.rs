@@ -16,9 +16,7 @@ pub enum LgLogLevel {
 #[derive(Copy, Clone)]
 pub enum LgLogPolicy {
   Drop          = 1 << 0,
-  Block         = 1 << 1,
-  SmashOldest   = 1 << 2,
-  PriorityBased = 1 << 3,
+  SmashOldest   = 1 << 1,
 }
 
 pub type LogFormatterT = unsafe extern "C" fn(

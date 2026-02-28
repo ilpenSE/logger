@@ -9,3 +9,4 @@ __pycache__
 Cargo.lock
 target
 node_modules
+jna.jar

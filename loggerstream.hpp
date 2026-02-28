@@ -7,7 +7,7 @@
 #include "logger.h"
 
 class LoggerStream {
- public:
+public:
   explicit LoggerStream(lg_log_level level)
     : m_level(std::move(level)) {}
 
@@ -36,7 +36,7 @@ class LoggerStream {
     return *this;
   }
 # endif
- private:
+private:
   bool m_first = true;
   std::ostringstream m_buffer;
   const char m_delimiter = ' ';
