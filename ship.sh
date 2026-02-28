@@ -24,6 +24,10 @@ rm -rf logs app time.txt test.py
 cd $proot/usages/python
 rm -rf logs __pycache__
 
+# Java
+cd $proot/usages/java
+rm -rf logs/ build/
+
 # Rust
 cd $proot/usages/rust
 rm -rf logs Cargo.lock target tests
