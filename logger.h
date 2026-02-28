@@ -59,7 +59,7 @@
    Wrapper for producer, takes variadics and processes it, used at macros
    int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...);
 
-   Functions that used at FFIs (F-functions), the level-less and level-aware functions here:
+   Functions that are used at FFIs (F-functions), the level-less and level-aware functions here:
    int lg_flog(const lg_log_level level, const char* msg);
    int lg_finfo(const char* msg);
    int lg_fwarn(const char* msg);
@@ -72,7 +72,8 @@
    int lg_ferrori(Logger* inst, const char* msg);
    int lg_fwarni(Logger* inst, const char* msg);
    
-   Getter and setter for active instance (lg_init automatically sets active instance if it's NULL)
+   Getter and setter for active instance
+   (lg_init automatically sets active instance if it's NULL)
    int lg_set_active_instance(Logger* inst);
    Logger* lg_get_active_instance();
 
@@ -96,9 +97,8 @@
    and stdout if you provided.
    Sometimes, your log messages may be disappeared if you stress-test it.
    That's because the ring buffer is a fixed-size buffer and it is full.
-   I have decided the "DROP THE LOG" policy at those situations but if you
-   provide printStdout as 1, since the writer thread gonna be slow,
-   you just dont get any dropped log. To see in where it dropped, you can define
+   I have decided the "DROP THE LOG" policy at those situations but you can
+   change it in config. To see in where it dropped, you can define
    LOGGER_DEBUG in your compilation (with -DLOGGER_DEBUG) or runtime (#define LOGGER_DEBUG)
 
    We have support for multi instances, but if you dont want to use multi instance,
@@ -106,11 +106,8 @@
    To destroy it, call lg_destroy() and free it (you can call lg_free())
    If you are using non C/C++ language, you have to use lg_alloc and lg_free
 
-   The config printStdout significantly slows down both of the threads
-   if you're using this at prod, dont forget to make printStdout as 0
-
-   If you're using implementation macro, you dont have to dynamically
-   link the library but you have to use C types and functions again.
+   The config printStdout significantly slows down writer thread.
+   If you're using this at prod, dont forget to make printStdout as 0
 */
 
 #ifdef __cplusplus
