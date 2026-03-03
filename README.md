@@ -94,51 +94,73 @@ typedef struct {
 
 - Flatted version of LoggerConfig
 - It's for languages that doesnt support C structs (e.g: Bun FFI in JavaScript)
-`int lg_init_flat(Logger* inst, const char* logs_dir,
+
+```c
+int lg_init_flat(Logger* inst, const char* logs_dir,
                   int local_time, int print_stdout,
-                  lg_log_policy policy, log_formatter_t log_formatter);`
+                  lg_log_policy policy, log_formatter_t log_formatter);
+```
 
 - Main destroyer function that destroys logger instances (DOES NOT MANAGE MEMORY!)
+
 `int lg_destroy(Logger* instance);`
 
 - Check if specific instance is dead or alive (if instance = NULL, checks active instance)
+
 `int lg_is_alive(const Logger* instance);`
 
 - Main producer function that puts message, time string and level into the ring
 - (NOT RECOMMENDED TO USE DIRECTLY, USE MACROS OR F-FUNCTIONS)
+
 `int lg_producer(Logger* inst, const lg_log_level level, const char* msg);`
 
 - Wrapper for producer, takes variadics and processes it, used at macros
+
 `int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...);`
 
 - Functions that are used at FFIs (F-functions), the level-less and level-aware functions here:
+
 `int lg_flog(const lg_log_level level, const char* msg);`
+
 `int lg_finfo(const char* msg);`
+
 `int lg_fwarn(const char* msg);`
+
 `int lg_ferror(const char* msg);`
 
 - F-functions with explicit instance, you can put NULL there if you wanna use active instance
 - (thats how functions above works)
+
 `int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);`
+
 `int lg_finfoi(Logger* inst, const char* msg);`
+
 `int lg_ferrori(Logger* inst, const char* msg);`
+
 `int lg_fwarni(Logger* inst, const char* msg);`
 
 - Getter and setter for active instance
 - (lg_init automatically sets active instance if it's NULL)
+
 `int lg_set_active_instance(Logger* inst);`
+
 `Logger* lg_get_active_instance();`
 
 ## Helper functions that you can use:
--Converts level enum to string
+- Converts level enum to string
+
 `const char* lg_lvl_to_str(const lg_log_level level);`
 
 - Used at consumer and you can use these on your custom formatter, go check static format_msg
+
 `void lg_str_format_into(lg_string* s, const char* fmt, ...);`
+
 `void lg_str_write_into(lg_string* s, const char* already_formatted_str);`
 
 - Allocator and freer for heap allocated instances or foreign languages
+
 `Logger* lg_alloc();`
+
 `void lg_free(Logger* inst);`
 
 # Explanation of this logger library (how it works):
