@@ -43,7 +43,7 @@ void simple_test() {
   swarn << "Some %20 warning";
 
   // also you can use classic logger.h api (works on every other language)
-  lg_info("info from api");
+  lg_info("info from %s", "api");
   lg_error("error from api");
   lg_warn("warning from api");
 }

@@ -14,3 +14,4 @@ jna.jar
 *.lib
 *.so
 *.exp
+*.exe

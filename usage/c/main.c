@@ -39,7 +39,7 @@ int main() {
     return -1;
   }
 
-  lg_info("the informatics");
+  lg_info("the %s", "informatics");
   lg_error("the errormatics");
   lg_warn("the warningmatics");
 
