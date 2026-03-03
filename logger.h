@@ -5,7 +5,7 @@
    THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
    IT IS WRITTEN IN PURE C, SAFE TO USE IN C++
    REQUIRES MINIMUM C99 VERSION
-   TESTED ON AMD64 GNU-LINUX WITH GCC AND CLANG
+   TESTED ON AMD64 GNU/LINUX WITH GCC/CLANG AND WINDOWS WITH MSVC
 
    MACROS THAT YOU CAN USE:
    LOGGER_IMPLEMENTATION -> Implementation of this header (USE THIS ON COMPILATION OR USAGE)
@@ -110,10 +110,24 @@
    If you're using this at prod, dont forget to make printStdout as 0
 */
 
-#ifdef __cplusplus
-  #define LOGGERDEF extern "C"
+// Better version of hybrid solution of STB and DLLs on every platform
+// This way, you can generate dll/so and use it or just use header
+#ifdef _WIN32
+  #define LOGGER_EXPORT __declspec(dllexport)
 #else
-  #define LOGGERDEF extern
+  #define LOGGER_EXPORT __attribute__((visibility("default")))
+#endif
+
+#ifdef __cplusplus
+  #define LOGGER_EXTERN extern "C"
+#else
+  #define LOGGER_EXTERN extern
+#endif
+
+#ifdef LOGGER_IMPLEMENTATION
+  #define LOGGERDEF LOGGER_EXTERN LOGGER_EXPORT
+#else
+  #define LOGGERDEF LOGGER_EXTERN
 #endif
 
 // some global includes here
@@ -314,9 +328,9 @@ LOGGERDEF void lg_free(Logger* inst);
 #define linfo   lg_info
 #define lwarn   lg_warn
 #define lerror  lg_error
-#define INFO    LG_INFO
-#define ERROR   LG_ERROR
-#define WARNING LG_WARNING
+#define LINFO    LG_INFO
+#define LERROR   LG_ERROR
+#define LWARNING LG_WARNING
 #endif
 
 // logger max message size (you can change it)
@@ -415,10 +429,12 @@ static void format_msg(const char* time_str, const lg_log_level level,
   #define pthread_mutex_lock(m) EnterCriticalSection(m)
   #define pthread_mutex_unlock(m) LeaveCriticalSection(m)
 
+  typedef void* (*void_star_fn)(void*);
+
   // threads
   // transpilation of win32 createthread funcs to UNIX
   static DWORD WINAPI lg_thread_trampoline(LPVOID arg) {
-    void* (*fn)(void*) = ((void**)arg)[0];
+    void* (*fn)(void*) = (void_star_fn)((void**)arg)[0];
     void* real_arg     = ((void**)arg)[1]; // unpacking fn and arg
     free(arg);
     fn(real_arg);
@@ -971,7 +987,7 @@ void lg_str_format_into(lg_string* s, const char* fmt, ...) {
 
 void lg_str_write_into(lg_string* s, const char* str) {
   if (!str) return;
-  return lg_str_format_into(s, "%s", str);
+  lg_str_format_into(s, "%s", str);
 }
 
 // message formatter helper - used at consumer

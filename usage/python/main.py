@@ -25,7 +25,7 @@ def main():
   cfg.printStdout = 1
   cfg.localTime = 1
   cfg.policy = logger.LG_DROP
-  cfg.logFormatter = myFormatter # ffi.NULL
+  cfg.logFormatter = ffi.NULL
 
   inst = logger.lg_alloc()
   if not logger.lg_init(inst, b"logs", cfg[0]):

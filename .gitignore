@@ -10,3 +10,7 @@ Cargo.lock
 target
 node_modules
 jna.jar
+*.dll
+*.lib
+*.so
+*.exp

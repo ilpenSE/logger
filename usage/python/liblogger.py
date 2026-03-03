@@ -69,4 +69,15 @@ Logger* lg_alloc();
 void    lg_free(Logger* inst);
 """)
 
-logger = ffi.dlopen("../../build/liblogger.so")
+import os
+import sys
+
+if sys.platform == "win32":
+  lib_name = "logger.dll"
+elif sys.platform == "darwin":
+  lib_name = "liblogger.dylib"
+else:
+  lib_name = "liblogger.so"
+
+dll_path = os.path.abspath(f"../../build/{lib_name}")
+logger = ffi.dlopen(dll_path)

@@ -1,11 +1,8 @@
 @echo off
-color a
-title Logger Build with MSVC
-cls
 setlocal
 
 set CC=cl
-set CFLAGS=/std:c11 /W4 /DLOGGER_IMPLEMENTATION /DLOGGER_BUILD
+set CFLAGS=/W4 /DLOGGER_IMPLEMENTATION /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT /Fo"build\\"
 
 if "%1"=="debug" (
   set CFLAGS=%CFLAGS% /DLOGGER_DEBUG /Zi /Od /LDd /MDd
@@ -15,6 +12,6 @@ if "%1"=="debug" (
 
 if not exist build mkdir build
 
-%CC% %CFLAGS% logger.h /Fe:build\logger.dll
+%CC% %CFLAGS% /TC logger.h /Fe:build\logger.dll
 
 endlocal
