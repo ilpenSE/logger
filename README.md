@@ -1,7 +1,7 @@
 # The Logger Library
 
 - ![Language](https://img.shields.io/badge/language-C-blue)
-![Language](https://img.shields.io/badge/sometimes-C++-blue)
+![Language](https://img.shields.io/badge/safe%20in-C++-blue)
 - ![Platform](https://img.shields.io/badge/platform-all-brightgreen)
 - ![Asynchronous](https://img.shields.io/badge/asynchronous-purple?style=for-the-badge)
 ![Thread Safe](https://img.shields.io/badge/thread%20safe-brightgreen?style=for-the-badge)
