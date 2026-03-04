@@ -1,4 +1,5 @@
 import com.sun.jna.Pointer;
+import com.sun.jna.Native;
 
 public class Main {
   static LoggerLib.LogFormatter formatter;
@@ -6,20 +7,26 @@ public class Main {
   public static void main(String[] args) {
     LoggerLib lg = LoggerLib.INSTANCE;
 
-    formatter = (time_str, level, msg, pack) -> {
+    formatter = (isLocalTime, level, msg, pack) -> {
       pack.read();
       String lvl = LoggerLib.INSTANCE.lg_lvl_to_str(level);
+      byte[] buf = new byte[24];
+      if (LoggerLib.INSTANCE.lg_get_time_str(buf, isLocalTime) != 1)
+        return 0;
+      String time_str = Native.toString(buf);
+
       String formatted = String.format("%s %s: %s\n", time_str, lvl, msg);
 
-      if (pack.stdout_str.data != null && pack.stdout_str.cap.longValue() != 0) {
+      if (pack.stdout_str.data != null) {
         lg.lg_str_write_into(pack.stdout_str, formatted);
       }
 
-      if (pack.file_str.data != null && pack.file_str.cap.longValue() != 0) {
+      if (pack.file_str.data != null) {
         lg.lg_str_write_into(pack.file_str, formatted);
       }
 
       pack.write();
+      return 1;
     };
 
     Pointer inst = lg.lg_alloc();

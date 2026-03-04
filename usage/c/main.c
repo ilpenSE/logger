@@ -11,16 +11,19 @@
 void do_something();
 
 // custom formatter usage (dont forget to add \n)
-void myFormatter(const char* time_str, const lg_log_level level,
-                 const char* msg, lg_msg_pack* pack) {
-  // smth like: 2026.01.22-00.15.20.810/INFO: stb lets gooo
-  if (pack->stdout_str.data && pack->stdout_str.cap != 0) {
+int myFormatter(const int isLocalTime, const lg_log_level level,
+                const char* msg, lg_msg_pack* pack) {
+  char time_str[LOGGER_TIME_STR_SIZE];
+  if (!lg_get_time_str(time_str, isLocalTime)) return false;
+
+  if (pack->stdout_str.data) {
     lg_str_format_into(&pack->stdout_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
   }
   
-  if (pack->file_str.data && pack->file_str.cap != 0) {
+  if (pack->file_str.data) {
     lg_str_format_into(&pack->file_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
   }
+  return true;
 }
 
 Logger* lg;

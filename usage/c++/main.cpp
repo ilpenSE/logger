@@ -85,20 +85,24 @@ void stress_test() {
   testFile.flush();
 }
 
-void myFormatter(const char* time_str, const lg_log_level level,
+int myFormatter(const int isLocalTime, const lg_log_level level,
                 const char* msg, lg_msg_pack* pack) {
+  char time_str[LOGGER_TIME_STR_SIZE];
+  if (!lg_get_time_str(time_str, isLocalTime)) return false;
+
   const char* lvlstr = lg_lvl_to_str(level);
-  if (pack->stdout_str.data != NULL && pack->stdout_str.cap != 0) {
+  if (pack->stdout_str.data) {
     lg_str_format_into(
       &pack->stdout_str,
       "%s {%s} %s\n", time_str, lvlstr, msg);
   }
   
-  if (pack->file_str.data != NULL && pack->file_str.cap != 0) {
+  if (pack->file_str.data) {
     lg_str_format_into(
       &pack->file_str,
       "%s {%s} %s\n", time_str, lvlstr, msg);
   }
+  return true;
 }
 
 int main() {

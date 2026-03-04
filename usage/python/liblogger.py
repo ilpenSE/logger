@@ -35,8 +35,8 @@ struct lg_msg_pack {
   lg_string stdout_str;
 };
 
-typedef void (*log_formatter_t)(const char* time_str, const lg_log_level level,
-  const char* msg, lg_msg_pack* pack);
+typedef int (*log_formatter_t)(const int isLocalTime, const lg_log_level level,
+                               const char* msg, lg_msg_pack* pack);
 
 typedef struct {
   int localTime;
@@ -64,6 +64,7 @@ int lg_fwarni(Logger* lg, const char* msg);
 
 void lg_str_write_into(lg_string* s, const char* str);
 const char* lg_lvl_to_str(const lg_log_level level);
+int lg_get_time_str(char* buf, int isLocalTime);
 
 Logger* lg_alloc();
 void    lg_free(Logger* inst);

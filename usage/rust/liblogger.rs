@@ -20,7 +20,7 @@ pub enum LgLogPolicy {
 }
 
 pub type LogFormatterT = unsafe extern "C" fn(
-    *const c_char, LgLogLevel, *const c_char, *mut LgMsgPack);
+    c_int, LgLogLevel, *const c_char, *mut LgMsgPack) -> c_int;
 
 // Config struct
 #[repr(C)]
@@ -70,6 +70,7 @@ unsafe extern "C" {
   // Custom formatter functions
   pub fn lg_lvl_to_str(level: LgLogLevel) -> *const c_char;
   pub fn lg_str_write_into(s: *mut LgString, str: *const c_char) -> c_void;
+  pub fn lg_get_time_str(buf: *mut c_char, isLocalTime: c_int) -> c_int;
 
   // Log functions
   // Implicit instances

@@ -40,6 +40,7 @@ public interface LoggerLib extends Library {
   int lg_ferrori(Pointer inst, String msg);
 
   // Helpers
+  int lg_get_time_str(byte[] time_str, int isLocalTime);
   String lg_lvl_to_str(int level);
   void lg_str_write_into(LgString s, String already_formatted_str);
 
@@ -69,6 +70,6 @@ public interface LoggerLib extends Library {
   }
 
   interface LogFormatter extends Callback {
-    void invoke(String time_str, int level, String msg, LgMsgPack.ByReference pack);
+    int invoke(int isLocalTime, int level, String msg, LgMsgPack.ByReference pack);
   }
 }

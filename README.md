@@ -80,6 +80,7 @@ for debug information
 
 # API Documentation
 - Main initializer function that you may use in C/C++:
+
 `int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);`
 
 - The LoggerConfig struct:
@@ -151,6 +152,10 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 
 `const char* lg_lvl_to_str(const lg_log_level level);`
 
+- Gets the time string format which is used at logs and log file names
+
+`int lg_get_time_str(char* buf, int isLocalTime);`
+
 - Used at consumer and you can use these on your custom formatter, go check static format_msg
 
 `void lg_str_format_into(lg_string* s, const char* fmt, ...);`
@@ -216,20 +221,25 @@ lg_finfo("Hello from function"); // normal functions, used at FFIs
 - You can customize log message. The customization limited by just layout.
 You can change time string, level and formatted message layout.
 - Default Layout: `time_str [level] msg`
-- If you want to use custom log layout declare formatter function ([example in default](logger.h#L946)) and assign it in logger config. Don't forget newline char.
+- You can have your custom time string format (dont worry about size of the time_str buffer)
+- Note that time_str is evaluated at consumer (writer) thread. It may not show correct time when you call producer.
+- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1019)) and assign it in logger config. Don't forget newline char.
 
 Latest usage in C:
 ```c
-void myFormatter(const char* time_str, const lg_log_level level,
-                 const char* msg, lg_msg_pack* pack) {
-  // smth like: 2026.01.22-00.15.20.810/INFO: lets gooo
-  if (pack->stdout_str.data) {
-    lg_str_format_into(&pack->stdout_str, "%s %s: %s\n", time_str, lg_lvl_to_str(level), msg);
-  }
+int myFormatter(const int local_time, const lg_log_level level,
+                   const char* msg, lg_msg_pack* pack) {
+    char time_str[24];
+    if (!lg_get_time_str(time_str, local_time)) return 0;
+    const char* lvl = lg_lvl_to_str(level);
 
-  if (pack->file_str.data) {
-    lg_str_format_into(&pack->file_str, "%s %s: %s\n", time_str, lg_lvl_to_str(level), msg);
-  }
+    if (pack->stdout_str.data) {
+        lg_str_format_into(&pack->stdout_str, "%s %s: %s\n", time_str, lvl, msg);
+    }
+
+    if (pack->file_str.data) {
+        lg_str_format_into(&pack->file_str, "%s %s: %s\n", time_str, lvl, msg);
+    }
 }
 
 Logger* lg = lg_alloc();
@@ -241,7 +251,7 @@ lg_init(lg, "logs", conf);
 ```
 
 - And you can always add new level and new logger stream instance!
-- All you have to do is define macros [like this](logger.h#L238)
+- All you have to do is define macros [like this](logger.h#L276)
 - And define stream macro [like this](loggerstream.hpp#L49)
 - That's it, you can use your custom level
 

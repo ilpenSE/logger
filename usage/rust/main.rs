@@ -19,28 +19,34 @@ unsafe fn cstr_to_string(cstr: *const c_char) -> String {
 }
 
 unsafe extern "C" fn myFormatter(
-  time_str: *const c_char,
+  local_time: c_int,
   level: LgLogLevel,
   msg: *const c_char,
   pack: *mut LgMsgPack
-) {
+) -> c_int {
   unsafe {
+    let mut time_str = [0i8; 24];
+    if lg_get_time_str(time_str.as_mut_ptr(), local_time) != 1 {
+      return 0;
+    }
+
     let formatted = CString::new(format!(
       "{} {}: {}\n",
-      cstr_to_string(time_str),
+      cstr_to_string(time_str.as_ptr()),
       cstr_to_string(lg_lvl_to_str(level)),
       cstr_to_string(msg),
     )).unwrap();
 
     let file_str = (*pack).file_str;
-    if file_str.data != null_mut() && file_str.cap != 0 {
+    if file_str.data != null_mut() {
       lg_str_write_into(&mut (*pack).file_str, formatted.as_ptr());
     }
 
     let stdout_str = (*pack).stdout_str;
-    if stdout_str.data != null_mut() && stdout_str.cap != 0 {
+    if stdout_str.data != null_mut() {
       lg_str_write_into(&mut (*pack).stdout_str, formatted.as_ptr());
     }
+    return 1;
   }
 }
 
