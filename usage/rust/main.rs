@@ -9,6 +9,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::fmt;
 use std::ptr::null_mut;
+use std::env;
 
 mod liblogger;
 use liblogger::*;
@@ -50,6 +51,12 @@ unsafe extern "C" fn myFormatter(
   }
 }
 
+macro_rules! cstr {
+  ($s:expr) => {
+    concat!($s, "\0").as_ptr() as *const i8
+  };
+}
+
 fn main() {
   unsafe { // useful main func
     let logs_dir = CString::new("logs").unwrap();
@@ -58,7 +65,7 @@ fn main() {
     let config = LoggerConfig {
       local_time: 1,
       print_stdout: 1,
-      policy: LgLogPolicy::Drop,
+      log_policy: LgLogPolicy::Drop,
       log_formatter: Some(formatter), // FUCK ALL RUST DEVELOPERS AND GOONERS
     };
 
@@ -69,16 +76,23 @@ fn main() {
       return;
     }
 
-    // 10k stress-test
-    for i in 0..10000 {
-      //println!("{i}");
-      let fmt = format!("Fuck Rust {:04} times", i);
-      let msg = CString::new(fmt).unwrap();
-      lg_finfo(msg.as_ptr());
-      //lg_ferror(msg.as_ptr());
-      //lg_fwarn(msg.as_ptr());
+    let args: Vec<String> = env::args().collect();
+    if args.get(1).map(|s| s == "-s").unwrap_or(false) {
+      // 10k stress-test
+      for i in 0..10000 {
+        //println!("{i}");
+        let fmt = format!("Fuck Rust {:04} times", i);
+        let msg = CString::new(fmt).unwrap();
+        lg_finfo(msg.as_ptr());
+        //lg_ferror(msg.as_ptr());
+        //lg_fwarn(msg.as_ptr());
+      }
+    } else {
+      lg_finfo(cstr!("Hello from Rust!"));
+      lg_fwarn(cstr!("Warn from Rust!"));
+      lg_ferror(cstr!("Error from Rust!"));
     }
-    
+
     let dres = lg_destroy(lg);
     if dres != 1 {
       println!("Logger destruct failed with code {dres}!");

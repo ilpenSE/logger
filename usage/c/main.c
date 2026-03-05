@@ -33,7 +33,8 @@ int main() {
   LoggerConfig conf = {
     .localTime = true,
     .printStdout = true,
-    .policy = LG_DROP,
+    .logPolicy = LG_DROP,
+    .maxFiles = 3,
     .logFormatter = NULL,
   };
 

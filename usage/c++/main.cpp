@@ -111,7 +111,8 @@ int main() {
   LoggerConfig conf = {
     .localTime = true,
     .printStdout = true,
-    .policy = LG_DROP,
+    .maxFiles = 10,
+    .logPolicy = LG_DROP,
     .logFormatter = myFormatter
   };
 

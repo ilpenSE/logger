@@ -12,6 +12,9 @@ zip $headers_zip.zip logger.h loggerstream.hpp
 # Generate usages folder
 cp -r usage usages
 
+# Remove deprecated
+rm -rf usages/deprecated
+
 # C
 cd $proot/usages/c
 rm -rf logs app
@@ -24,17 +27,9 @@ rm -rf logs app time.txt test.py
 cd $proot/usages/python
 rm -rf logs __pycache__
 
-# Java
-cd $proot/usages/java
-rm -rf logs/ build/
-
 # Rust
 cd $proot/usages/rust
 rm -rf logs Cargo.lock target tests
-
-# JavaScript
-cd $proot/usages/javascript
-rm -rf logs
 
 # Generate zips
 cd $proot/usages

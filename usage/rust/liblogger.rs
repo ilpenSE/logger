@@ -27,7 +27,7 @@ pub type LogFormatterT = unsafe extern "C" fn(
 pub struct LoggerConfig {
   pub local_time:     c_int,
   pub print_stdout:   c_int,
-  pub policy:         LgLogPolicy,
+  pub log_policy:     LgLogPolicy,
   pub log_formatter:  Option<LogFormatterT>,
 }
 

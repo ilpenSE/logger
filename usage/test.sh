@@ -17,15 +17,6 @@ test_c() {
   printf "$clr_title========== C Test END ==========$clr_rst\n"
 }
 
-# Test JS
-test_js() {
-  printf "$clr_title========== Testing JavaScript (Bun) ==========$clr_rst\n"
-  cd javascript
-  bun main.js
-  cd ..
-  printf "$clr_title========== JS Test END ==========$clr_rst\n"
-}
-
 # Test Python
 test_python() {
   printf "$clr_title========== Testing Python ==========$clr_rst\n"
@@ -33,15 +24,6 @@ test_python() {
   python main.py # Activate an env with cffi installed
   cd ..
   printf "$clr_title========== Python Test END ==========$clr_rst\n"
-}
-
-# Test Java
-test_java() {
-  printf "$clr_title========== Testing Java ==========$clr_rst\n"
-  cd java
-  make run
-  cd ..
-  printf "$clr_title========== Java Test END ==========$clr_rst\n"
 }
 
 # Test Rust
@@ -66,15 +48,13 @@ test_cpp() {
 test_all() {
   test_c &&
     test_python &&
-    test_java &&
-    test_js && 
     test_cpp &&
     test_rust
 }
 
 case $1 in
   js | javascript)
-    test_js ;;
+    echo "JS usage is deprecated and it won't be updated anymore" ;;
   cpp | c++)
     test_cpp ;;
   rust)
@@ -84,7 +64,7 @@ case $1 in
   py | python)
     test_python ;;
   java)
-    test_java ;;
+    echo "Java usage is deprecated and it won't be updated anymore" ;;
   *)
     test_all ;;
 esac

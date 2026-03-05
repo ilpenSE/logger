@@ -26,8 +26,6 @@ You can compile this single header and turn it into shared object file.
 - [Usage in C++](usage/c++)
 - [Usage in Python](usage/python)
 - [Usage in Rust](usage/rust)
-- [Usage in JS (Bun)](usage/javascript)
-- [Usage in Java](usage/java)
 - [Header-only in C++, exported via C ABI (Deprecated)](https://github.com/ilpenSE/logger/tree/deprecated)
 
 # Library Linking/Usage

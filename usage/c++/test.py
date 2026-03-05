@@ -11,7 +11,7 @@ bad_lines = 0
 line_count = 0
 other_lines = 0
 
-logf = "logs/2026.02.19-18.44.47.329.log"
+logf = "logs/2026.03.05-16.19.17.035.log"
 with open(logf, "r", errors="replace") as f:
   for i, line in enumerate(f, 1):
     line_count += 1

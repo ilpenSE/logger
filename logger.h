@@ -1,3 +1,29 @@
+/*
+  The MIT License
+  Copyright (c) 2026, ilpeN
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+
+  TLDR:
+    do whatever you want, just keep the license text
+*/
+
 #ifndef LOGGER_H
 #define LOGGER_H
 
@@ -96,7 +122,7 @@ struct lg_msg_pack {
 };
 
 typedef int (*log_formatter_t)(const int isLocalTime, const lg_log_level level,
-                                const char* msg, lg_msg_pack* pack);
+                               const char* msg, lg_msg_pack* pack);
 
 /*
  * Config struct, this struct can be used in lg_init.
@@ -116,13 +142,17 @@ typedef int (*log_formatter_t)(const int isLocalTime, const lg_log_level level,
    SINCE V3.6: time_str is removed from parameters, that's
    because you can customize time string (already format_msg
    calls get_time_str) and producer doesn't call it anymore
- * policy: the log policy which determines what the logger
+ * logPolicy: the log policy which determines what the logger
    does when the ring buffer is empty
+ * maxFiles: maximum amount of .log files that is in the
+   logs folder. Non-positive values'll be treated as unlimited
+   If this is exceeded, it'll remove the oldest log file
 */
 typedef struct {
   int localTime;
   int printStdout;
-  lg_log_policy policy;
+  int maxFiles;
+  lg_log_policy logPolicy;
   log_formatter_t logFormatter;
 } LoggerConfig;
 
@@ -154,8 +184,9 @@ LOGGERDEF int lg_init(Logger* instance, const char* logs_dir,
 /*
   lg_init but Flattened the config struct (mostly used at FFIs)
 */
-LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir, int local_time,
-                           int print_stdout, lg_log_policy policy,
+LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir,
+                           int local_time, int print_stdout, int max_log_files,
+                           lg_log_policy log_policy,
                            log_formatter_t log_formatter);
 
 /*
@@ -175,7 +206,7 @@ LOGGERDEF int lg_is_alive(const Logger* instance);
   Then invokes the writer thread.
 */
 LOGGERDEF int lg_producer(Logger* inst, const lg_log_level level,
-                          const char* msg);
+                          const char* msg, size_t msglen);
 
 /*
   This is the format resolver for lg_producer.
@@ -222,7 +253,7 @@ LOGGERDEF const char* lg_lvl_to_str(const lg_log_level level);
   Processes "%" style printf format (variadics), it may cause UBs
 */
 LOGGERDEF void lg_str_format_into(lg_string* s, const char* fmt, ...)
-PRINTF_LIKE(2, 3);
+  PRINTF_LIKE(2, 3);
 
 /*
   lg_str_format_into but already formatted strings
@@ -298,6 +329,10 @@ LOGGERDEF void lg_free(Logger* inst);
 // ring buffer's size
 #define LOGGER_RING_SIZE 1024
 
+// File extension for files and extension string's size
+#define LOGGER_FILE_EXT ".log"
+#define LOGGER_FILE_EXT_SZ 4
+
 // log entry struct to be used at ring buffer
 typedef struct {
   // main, plain message (resolved from variadics)
@@ -331,8 +366,12 @@ static int check_dir(const char* path);
 // normalizes path to acceptable ones (>1 slash skips, removing trailing slash)
 static bool normalize_path(const char* path, char* out, size_t size);
 
+// count .log files and print oldest one to oldest_path in that folder
+// negative return value is error status
+static int count_logs_and_get_oldest(const char* path, char* oldest_path, size_t oldest_path_size);
+
 // recursively creates folders (behaves like mkdir -p)
-static bool mkdir_p(const char* path);
+static bool mkdir_p(char* path);
 
 // default and custom formatter distinguisher, used at consumer
 static int format_msg(const int isLocalTime, const lg_log_level level,
@@ -340,15 +379,15 @@ static int format_msg(const int isLocalTime, const lg_log_level level,
 
 // i stands for "internal", so lgierror means logger internal error
 // lgierror - prints out where it happened
-#define lgierror(fmt, ...)                                         \
-  do {                                                             \
-    fprintf(stderr, "%s:%d: ERROR: " fmt "\n", __FILE__, __LINE__, \
-            ##__VA_ARGS__);                                        \
+#define lgierror(fmt, ...)                                          \
+  do {                                                              \
+    fprintf(stderr, "%s:%d: ERROR: " fmt "\n", __FILE__, __LINE__,  \
+            ##__VA_ARGS__);                                         \
   } while (0)
 
 // lgiprint - auto adds \n at the end and where
-#define lgiprint(fmt, ...)                                               \
-  do {                                                                   \
+#define lgiprint(fmt, ...)                                              \
+  do {                                                                  \
     printf("%s:%d: INFO: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
   } while (0)
 
@@ -370,7 +409,7 @@ static int format_msg(const int isLocalTime, const lg_log_level level,
 
 #define MKDIR(path) _mkdir(path)
 #define PATH_SEP '\\'
-#define PATH_MAX MAX_PATH * 2  // for wchar_t
+#define PATH_MAX (MAX_PATH * 2) // for wchar_t
 
 // TRANSPILATION FROM WINAPI TO POSIX FOR PTHREADS
 typedef HANDLE pthread_t;
@@ -459,6 +498,8 @@ static int pthread_cond_signal(pthread_cond_t *c) {
 #include <pthread.h>
 #include <sys/stat.h>  // for dirs
 #include <sys/time.h>  // for time
+#include <dirent.h>
+#include <unistd.h>
 
 #define MKDIR(path) mkdir(path, 0755)
 #define PATH_SEP '/'
@@ -474,12 +515,13 @@ struct Logger {
   FILE* logFile;
   log_formatter_t customLogFunc;
   lg_log_policy logPolicy;
+  int maxLogFiles; // non-positive = unlimited
 
-  // global mutex to prevent race conditions
+  // global and writer mutex
   pthread_mutex_t mtx;
   pthread_mutex_t wmtx;
 
-  // writer thread mutex and cond
+  // writer thread and cond
   pthread_cond_t wcond;
   pthread_cond_t pcond;
   pthread_t writer_tid;
@@ -561,14 +603,16 @@ static void* lg_consumer(void* arg)
 // active logger instance if NULL, init tries to set it
 static Logger* active_instance = NULL;
 
-int lg_init_flat(Logger* inst, const char* logs_dir, int local_time,
-                 int print_stdout, lg_log_policy policy,
+int lg_init_flat(Logger* inst, const char* logs_dir,
+                 int local_time, int print_stdout, int max_log_files,
+                 lg_log_policy log_policy,
                  log_formatter_t log_formatter)
 {
   LoggerConfig cfg;
   cfg.localTime = local_time;
   cfg.printStdout = print_stdout;
-  cfg.policy = policy;
+  cfg.maxFiles = max_log_files;
+  cfg.logPolicy = log_policy;
   cfg.logFormatter = log_formatter;
   return lg_init(inst, logs_dir, cfg);
 }
@@ -581,24 +625,44 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
 
   inst->isPrintStdout = config.printStdout != 0;
   inst->isLocalTime = config.localTime != 0;
+  inst->maxLogFiles = config.maxFiles;
   inst->customLogFunc = config.logFormatter;
-  inst->logPolicy = config.policy;
+  inst->logPolicy = config.logPolicy;
   inst->pcurr = 0;
   inst->wcurr = 0;
 
-  int dir_status = check_dir(logs_dir);  // -1 = NOT valid directory, 0 = NOT exists
+  char dir[PATH_MAX];
+  if (!normalize_path(logs_dir, dir, sizeof(dir))) {
+    LG_DEBUG_ERR("Provided path is corrupted: %s", logs_dir);
+    return false;
+  }
+
+  int dir_status = check_dir(dir);  // -1 = NOT valid directory, 0 = NOT exists
   // handle not a valid directory
   if (dir_status == -1) {
     LG_DEBUG_ERR("Provided path is not a valid directory to create: %s",
-                 logs_dir);
+                 dir);
     return false;
   }
 
   // handle just non-exist directory (best effort)
   if (dir_status == 0) {
-    if (!mkdir_p(logs_dir)) {
-      LG_DEBUG_ERR("Cannot create provided path: %s", logs_dir);
+    if (!mkdir_p(dir)) {
+      LG_DEBUG_ERR("Cannot create provided path: %s", dir);
       return false;
+    }
+  } else {
+    // get .log files in that logs folder
+    char oldestFile[PATH_MAX];
+    int files = count_logs_and_get_oldest(dir, oldestFile, sizeof(oldestFile));
+    if (files < 0) {
+      LG_DEBUG_ERR("Cannot count files and get oldest in %s", dir);
+      return false;
+    }
+
+    // Remove the oldest file when max files are exceeded
+    if (files >= config.maxFiles) {
+      remove(oldestFile);
     }
   }
 
@@ -607,10 +671,9 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
   if (!lg_get_time_str(time_str, config.localTime)) return false;
 
   // produce file path with a fixed size
-  // (removed that complex path normalization and alloca)
   char file_path[PATH_MAX];
-  int n = snprintf(file_path, sizeof(file_path), "%s%c%s.log", logs_dir,
-                   PATH_SEP, time_str);
+  int n = snprintf(file_path, sizeof(file_path), "%s%s" LOGGER_FILE_EXT, dir,
+                   time_str);
   if (n <= 0 || (size_t)n >= sizeof(file_path)) return false;
 
   // open file in write binary mode
@@ -657,14 +720,14 @@ int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...)
     return false;
   }
 
-  return lg_producer(inst, level, msg);
+  return lg_producer(inst, level, msg, mn);
 }
 
 // main log function, invokes the writer - used at FFIs
 // accepts format-resolved message to print
-int lg_producer(Logger* inst, const lg_log_level level, const char* msg)
+int lg_producer(Logger* inst, const lg_log_level level, const char* msg, size_t msglen)
 {
-  if (!msg) return false;
+  if (!msg || msglen > LOGGER_MAX_MSG_SIZE) return false;
 
   if (!inst) {
     if (active_instance)
@@ -678,6 +741,7 @@ int lg_producer(Logger* inst, const lg_log_level level, const char* msg)
   // doesnt log when its not alive
   pthread_mutex_lock(&inst->mtx);
   if (!inst->isAlive) {
+    pthread_mutex_unlock(&inst->mtx);
     LG_DEBUG_ERR("Cannot log because the instance is dead!");
     return false;
   }
@@ -711,13 +775,6 @@ smash_oldest:
     goto policy_done;
   }
 policy_done:
-  pthread_mutex_unlock(&inst->mtx);
-
-  // get msg length with strlen
-  size_t msglen = strlen(msg);
-  if (msglen > LOGGER_MAX_MSG_SIZE) return false;
-
-  pthread_mutex_lock(&inst->mtx);
   // copy message and put zero on ring
   memcpy(inst->ring[next].msg, msg, msglen);
   inst->ring[next].msg[msglen] = '\0';
@@ -826,8 +883,8 @@ void lg_free(Logger* inst)
 int lg_flogi(Logger* inst, const lg_log_level level, const char* msg)
 {
   if (!msg) return false;
-  if (!inst) return lg_producer(active_instance, level, msg);
-  return lg_producer(inst, level, msg);
+  if (!inst) return lg_producer(active_instance, level, msg, strlen(msg));
+  return lg_producer(inst, level, msg, strlen(msg));
 }
 
 // Explicit instances
@@ -936,27 +993,75 @@ static int check_dir(const char* path)
 #endif
 }
 
-static bool mkdir_p(const char* path)
+static bool mkdir_p(char* path)
 {
   if (!path || !*path) return false;
 
-  // normalize path
-  char tmp[PATH_MAX];
-  if (!normalize_path(path, tmp, sizeof(tmp))) return false;
-
   // go char by char
-  for (char* p = tmp + 1; *p; p++) {
+  for (char* p = path + 1; *p; p++) {
     if (*p != PATH_SEP) continue;
     *p = '\0';
-    LG_DEBUG("Trying to create: %s", tmp);
-    int status = MKDIR(tmp);
+    LG_DEBUG("Trying to create: %s", path);
+    int status = MKDIR(path);
     if (status != 0 && errno != EEXIST) {
-      LG_DEBUG_ERR("Failed to create path: %s", tmp);
+      LG_DEBUG_ERR("Failed to create path: %s", path);
       return false;
     }
     *p = PATH_SEP;
   }
   return true;
+}
+
+static int count_logs_and_get_oldest(const char* path, char* oldest_path, size_t opsz) {
+  int count = 0;
+#ifdef _WIN32
+  char pattern[PATH_MAX];
+  snprintf(pattern, sizeof(pattern), "%s\\*" LOGGER_FILE_EXT, path);
+
+  WIN32_FIND_DATAA fdata;
+  HANDLE h = FindFirstFileA(pattern, &fdata);
+  if (h == INVALID_HANDLE_VALUE) return -1;
+
+  FILETIME oldest_ft = { .dwLowDateTime = MAXDWORD, .dwHighDateTime = MAXDWORD };
+  do {
+    count++;
+
+    FILETIME ft = fdata.ftLastWriteTime;
+    if (oldest_path && CompareFileTime(&ft, &oldest_ft) < 0) {
+      oldest_ft = ft;
+      snprintf(oldest_path, opsz, "%s\\%s", path, fdata.cFileName);
+    }
+  } while (FindNextFileA(h, &fdata));
+
+  FindClose(h);
+#else
+  LG_UNUSED(opsz);
+  DIR* dir = opendir(path);
+  if (!dir) return -1;
+  time_t oldest_mtime = LLONG_MAX;
+
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != NULL) {
+    const char* name = entry->d_name;
+    size_t len = strlen(name);
+    if (len <= LOGGER_FILE_EXT_SZ ||
+        memcmp(name + len - LOGGER_FILE_EXT_SZ, LOGGER_FILE_EXT, LOGGER_FILE_EXT_SZ) != 0)
+      continue;
+
+    count += 1;
+    char full_path[PATH_MAX];
+    int n = snprintf(full_path, sizeof(full_path), "%s/%s", path, name);
+    if (n < 0 || (size_t)n >= sizeof(full_path)) continue;
+    struct stat st;
+    if (stat(full_path, &st) == 0 && st.st_mtime < oldest_mtime) {
+      oldest_mtime = st.st_mtime;
+      memcpy(oldest_path, full_path, n);
+    }
+  }
+
+  if (closedir(dir) != 0) return -1;
+#endif
+  return count;
 }
 
 static bool normalize_path(const char* path, char* out, size_t size)
