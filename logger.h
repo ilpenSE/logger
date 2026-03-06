@@ -28,35 +28,35 @@
 #define LOGGER_H
 
 /*
-   THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
-   IT IS WRITTEN IN PURE C, SAFE TO USE IN C++
-   REQUIRES MINIMUM C99 VERSION
-   TESTED ON AMD64 GNU/LINUX WITH GCC/CLANG AND WINDOWS WITH MSVC
+  THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
+  IT IS WRITTEN IN PURE C, SAFE TO USE IN C++
+  REQUIRES MINIMUM C99 VERSION
+  TESTED ON AMD64 GNU/LINUX WITH GCC/CLANG AND WINDOWS WITH MSVC
 
-   MACROS THAT YOU CAN USE:
-   LOGGER_IMPLEMENTATION -> Implementation of this header (USE THIS ON
-   COMPILATION OR USAGE) LOGGER_MINIFY_PREFIXES -> Minifies "lg_" prefix into
-   just "l" including lg_log LOGGER_DEBUG -> If this enabled, logger's internal
-   errors will be shown at stderr.
-   --> You may doesnt want to use this at production
+  MACROS THAT YOU CAN USE:
+  LOGGER_IMPLEMENTATION -> Implementation of this header (USE THIS ONCOMPILATION OR USAGE)
+  LOGGER_MINIFY_PREFIXES -> Minifies "lg_" prefix into just "l" including lg_log
+  LOGGER_DONT_COLORIZE -> Disables the colorized stdout messages at default formatter
+  LOGGER_DEBUG -> If this enabled, logger's internal errors will be shown at stderr.
+  --> You may doesnt want to use this at production
 
-   USAGE IN C:
-   #define LOGGER_IMPLEMENTATION
-   #define LOGGER_MINIFY_PREFIXES
-   #include <stdio.h>
+  USAGE IN C:
+  #define LOGGER_IMPLEMENTATION
+  #define LOGGER_MINIFY_PREFIXES
+  #include <stdio.h>
 
-   #include "logger.h"
+  #include "logger.h"
 
-   int main() {
-     Logger* lg = lg_alloc();
-     if (!lg_init(lg, "logs", {.localTime=1, .printStdout=1}))
-       return 1;
-     char name[33];
-     scanf("%32s", &name);
-     lg_info("Hello, %s!", name);
-     linfo("Here is the logger!");
-     if (!lg_destroy(lg)) return 1;
-   }
+  int main() {
+    Logger* lg = lg_alloc();
+    if (!lg_init(lg, "logs", {.localTime=1, .printStdout=1}))
+      return 1;
+    char name[33];
+    scanf("%32s", &name);
+    lg_info("Hello, %s!", name);
+    linfo("Here is the logger!");
+    if (!lg_destroy(lg)) return 1;
+  }
 */
 
 // Better version of hybrid solution of STB and DLLs on every platform
@@ -122,7 +122,7 @@ struct lg_msg_pack {
 };
 
 typedef int (*log_formatter_t)(const int isLocalTime, const lg_log_level level,
-                               const char* msg, lg_msg_pack* pack);
+                              const char* msg, lg_msg_pack* pack);
 
 /*
  * Config struct, this struct can be used in lg_init.
@@ -168,15 +168,15 @@ typedef struct {
 #endif
 
 /*
-   Main initializer function, Creates Logger instance
-   @param logs_dir: const char*, Points a directory path
-   (if not exists, it'll try to create). It can be relative or absolute path.
-   @param config: LoggerConfig
+  Main initializer function, Creates Logger instance
+  @param logs_dir: const char*, Points a directory path
+  (if not exists, it'll try to create). It can be relative or absolute path.
+  @param config: LoggerConfig
 
-   RECOMMENDED: on your app's entry point, check its return value like
-   if(!lg_init(...)) You dont have to use lg_destroy() if init failed. Because
-   if init failed, isAlive set to be 0 and lg_destroy() simply wont work if the
-   logger instance is dead
+  RECOMMENDED: on your app's entry point, check its return value like
+  if(!lg_init(...)) You dont have to use lg_destroy() if init failed. Because
+  if init failed, isAlive set to be 0 and lg_destroy() simply wont work if the
+  logger instance is dead
 */
 LOGGERDEF int lg_init(Logger* instance, const char* logs_dir,
                       LoggerConfig config);
@@ -185,9 +185,9 @@ LOGGERDEF int lg_init(Logger* instance, const char* logs_dir,
   lg_init but Flattened the config struct (mostly used at FFIs)
 */
 LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir,
-                           int local_time, int print_stdout, int max_log_files,
-                           lg_log_policy log_policy,
-                           log_formatter_t log_formatter);
+                          int local_time, int print_stdout, int max_log_files,
+                          lg_log_policy log_policy,
+                          log_formatter_t log_formatter);
 
 /*
   Destroys specific logger instance and closes the log file that the instance
@@ -214,7 +214,7 @@ LOGGERDEF int lg_producer(Logger* inst, const lg_log_level level,
   It may crash your app if you're using this on FFI or wrongly on C
 */
 LOGGERDEF int lg_vproducer(Logger* inst, const lg_log_level level,
-                           const char* fmt, ...) PRINTF_LIKE(3, 4);
+                          const char* fmt, ...) PRINTF_LIKE(3, 4);
 
 /*
   Wrapper log functions for FFI, if you dont use C/C++ or
@@ -260,7 +260,7 @@ LOGGERDEF void lg_str_format_into(lg_string* s, const char* fmt, ...)
   Use it at FFI because you can't use variadics there
 */
 LOGGERDEF void lg_str_write_into(lg_string* s,
-                                 const char* already_formatted_str);
+                                const char* already_formatted_str);
 
 /*
   Gets time using kernel in this format:
@@ -604,9 +604,9 @@ static void* lg_consumer(void* arg)
 static Logger* active_instance = NULL;
 
 int lg_init_flat(Logger* inst, const char* logs_dir,
-                 int local_time, int print_stdout, int max_log_files,
-                 lg_log_policy log_policy,
-                 log_formatter_t log_formatter)
+                int local_time, int print_stdout, int max_log_files,
+                lg_log_policy log_policy,
+                log_formatter_t log_formatter)
 {
   LoggerConfig cfg;
   cfg.localTime = local_time;
@@ -640,8 +640,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
   int dir_status = check_dir(dir);  // -1 = NOT valid directory, 0 = NOT exists
   // handle not a valid directory
   if (dir_status == -1) {
-    LG_DEBUG_ERR("Provided path is not a valid directory to create: %s",
-                 dir);
+    LG_DEBUG_ERR("Provided path is not a valid directory to create: %s", dir);
     return false;
   }
 
@@ -672,8 +671,8 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
 
   // produce file path with a fixed size
   char file_path[PATH_MAX];
-  int n = snprintf(file_path, sizeof(file_path), "%s%s" LOGGER_FILE_EXT, dir,
-                   time_str);
+  int n = snprintf(file_path, sizeof(file_path),
+                  "%s%s" LOGGER_FILE_EXT, dir, time_str);
   if (n <= 0 || (size_t)n >= sizeof(file_path)) return false;
 
   // open file in write binary mode
@@ -970,8 +969,8 @@ int lg_get_time_str(char* buf, int isLocalTime)
   long ms = ts.tv_nsec / 1000000;  // nanosecond -> millisecond
 
   int n = snprintf(buf, LOGGER_TIME_STR_SIZE, "%04d.%02d.%02d-%02d.%02d.%02d.%03ld",
-                   tm_val.tm_year + 1900, tm_val.tm_mon + 1, tm_val.tm_mday,
-                   tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, ms);
+                  tm_val.tm_year + 1900, tm_val.tm_mon + 1, tm_val.tm_mday,
+                  tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, ms);
   if (n <= 0 || (size_t)n >= LOGGER_TIME_STR_SIZE) return false;
 #endif  // _WIN32
   return true;
@@ -1022,7 +1021,9 @@ static int count_logs_and_get_oldest(const char* path, char* oldest_path, size_t
   HANDLE h = FindFirstFileA(pattern, &fdata);
   if (h == INVALID_HANDLE_VALUE) return -1;
 
-  FILETIME oldest_ft = { .dwLowDateTime = MAXDWORD, .dwHighDateTime = MAXDWORD };
+  FILETIME oldest_ft;
+  oldest_ft.dwLowDateTime = MAXDWORD;
+  oldest_ft.dwHighDateTime = MAXDWORD;
   do {
     count++;
 
@@ -1130,6 +1131,13 @@ static int format_msg(const int isLocalTime, const lg_log_level level,
 
   // prepairing stdout msg
   if (pack->stdout_str.data) {
+    #ifdef LOGGER_DONT_COLORIZE
+    lg_str_format_into(
+      &pack->stdout_str,
+      "%s [%s] %s\n",
+      time_str, lg_lvl_to_str(level), msg
+    );
+    #else
     const char* clr;
     switch (level) {
     case LG_ERROR:
@@ -1145,11 +1153,12 @@ static int format_msg(const int isLocalTime, const lg_log_level level,
       clr = CLR_RST;
       break;
     }
-
     lg_str_format_into(
       &pack->stdout_str,
       CLR_AQUA "%s %s[%s]" CLR_RST " %s\n",
-      time_str, clr, lg_lvl_to_str(level), msg);
+      time_str, clr, lg_lvl_to_str(level), msg
+    );
+    #endif
   }
 
   // prepairing file msg

@@ -33,7 +33,7 @@ void destruct_test() {
     std::cerr << "somehow logger destruct failed\n";
     return;
   }
-  sinfo << "Log after destruct";
+  sinfo << "Log after destruct"; // UB (crash on x86_64-windows64)
 }
 
 void simple_test() {
@@ -108,13 +108,12 @@ int myFormatter(const int isLocalTime, const lg_log_level level,
 int main() {
   Logger* lg = lg_alloc();
 
-  LoggerConfig conf = {
-    .localTime = true,
-    .printStdout = true,
-    .maxFiles = 10,
-    .logPolicy = LG_DROP,
-    .logFormatter = myFormatter
-  };
+  LoggerConfig conf;
+  conf.localTime = true;
+  conf.printStdout = true;
+  conf.maxFiles = 10;
+  conf.logPolicy = LG_DROP;
+  conf.logFormatter = myFormatter;
 
   if (!lg_init(lg, "logs", conf)) {
     std::cerr << "[MAIN] Logger init failed\n";
