@@ -220,8 +220,9 @@ lg_finfo("Hello from function"); // normal functions, used at FFIs
 You can change time string, level and formatted message layout.
 - Default Layout: `time_str [level] msg`
 - You can have your custom time string format (dont worry about size of the time_str buffer)
+- Define `LOGGER_DONT_COLORIZE` if you dont want colorized stdout
 - Note that time_str is evaluated at consumer (writer) thread. It may not show correct time when you call producer.
-- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1019)) and assign it in logger config. Don't forget newline char.
+- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1125)) and assign it in logger config. Don't forget newline char.
 
 Latest usage in C:
 ```c
@@ -249,8 +250,8 @@ lg_init(lg, "logs", conf);
 ```
 
 - And you can always add new level and new logger stream instance!
-- All you have to do is define macros [like this](logger.h#L276)
-- And define stream macro [like this](loggerstream.hpp#L49)
+- All you have to do is define macros [like this](logger.h#L307)
+- And define stream macro [like this](loggerstream.hpp#L75)
 - That's it, you can use your custom level
 
 # C++ Exclusives
