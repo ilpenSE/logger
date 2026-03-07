@@ -34,7 +34,7 @@ int main() {
     .localTime = true,
     .printStdout = true,
     .logPolicy = LG_DROP,
-    .maxFiles = 3,
+    .maxFiles = 0,
     .logFormatter = NULL,
   };
 

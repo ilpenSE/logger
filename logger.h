@@ -651,17 +651,19 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
       return false;
     }
   } else {
-    // get .log files in that logs folder
-    char oldestFile[PATH_MAX];
-    int files = count_logs_and_get_oldest(dir, oldestFile, sizeof(oldestFile));
-    if (files < 0) {
-      LG_DEBUG_ERR("Cannot count files and get oldest in %s", dir);
-      return false;
-    }
+    if (config.maxFiles > 0) {
+      // get .log files in that logs folder
+      char oldestFile[PATH_MAX];
+      int files = count_logs_and_get_oldest(dir, oldestFile, sizeof(oldestFile));
+      if (files < 0) {
+        LG_DEBUG_ERR("Cannot count files and get oldest in %s", dir);
+        return false;
+      }
 
-    // Remove the oldest file when max files are exceeded
-    if (files >= config.maxFiles) {
-      remove(oldestFile);
+      // Remove the oldest file when max files are exceeded
+      if (files >= config.maxFiles) {
+        remove(oldestFile);
+      }
     }
   }
 
@@ -1056,7 +1058,7 @@ static int count_logs_and_get_oldest(const char* path, char* oldest_path, size_t
     struct stat st;
     if (stat(full_path, &st) == 0 && st.st_mtime < oldest_mtime) {
       oldest_mtime = st.st_mtime;
-      memcpy(oldest_path, full_path, n);
+      memcpy(oldest_path, full_path, n + 1);
     }
   }
 
