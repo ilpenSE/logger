@@ -30,7 +30,7 @@ test_python() {
 test_rust() {
   printf "$clr_title========== Testing Rust ==========$clr_rst\n"
   cd rust
-  ./start.sh
+  cargo run
   cd ..
   printf "$clr_title========== Rust Test END ==========$clr_rst\n"
 }

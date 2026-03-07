@@ -85,8 +85,8 @@ void stress_test() {
   testFile.flush();
 }
 
-int myFormatter(const int isLocalTime, const lg_log_level level,
-                const char* msg, lg_msg_pack* pack) {
+int myFormatter(const int isLocalTime, const LgLogLevel level,
+                const char* msg, LgMsgPack* pack) {
   char time_str[LOGGER_TIME_STR_SIZE];
   if (!lg_get_time_str(time_str, isLocalTime)) return false;
 

@@ -1,4 +1,4 @@
-from liblogger import ffi, Logger
+from liblogger import Logger
 import time, ctypes
 
 @Logger.logFormatter
