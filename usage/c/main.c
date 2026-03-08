@@ -7,21 +7,25 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdint.h>
 
 void do_something();
 
 // custom formatter usage (dont forget to add \n)
-int myFormatter(const int isLocalTime, const lg_log_level level,
-                const char* msg, lg_msg_pack* pack) {
+int myFormatter(int isLocalTime, LgLogLevel level,
+                const char* msg, uint32_t needed, LgMsgPack pack) {
   char time_str[LOGGER_TIME_STR_SIZE];
   if (!lg_get_time_str(time_str, isLocalTime)) return false;
 
-  if (pack->stdout_str.data) {
-    lg_str_format_into(&pack->stdout_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
+  LgString* stdout_str = &pack[LG_OUT_TTY];
+  LgString* file_str = &pack[LG_OUT_FILE];
+
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
+    lg_str_format_into(stdout_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
   }
   
-  if (pack->file_str.data) {
-    lg_str_format_into(&pack->file_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE)) {
+    lg_str_format_into(file_str, "%s/%s: %s\n", time_str, lg_lvl_to_str(level), msg);
   }
   return true;
 }
@@ -34,7 +38,7 @@ int main() {
     .localTime = true,
     .printStdout = true,
     .logPolicy = LG_DROP,
-    .maxFiles = 3,
+    .maxFiles = 0,
     .logFormatter = NULL,
   };
 

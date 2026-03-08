@@ -85,22 +85,27 @@ void stress_test() {
   testFile.flush();
 }
 
-int myFormatter(const int isLocalTime, const lg_log_level level,
-                const char* msg, lg_msg_pack* pack) {
+int myFormatter(int isLocalTime, LgLogLevel level,
+                const char* msg, uint32_t needed, LgMsgPack pack) {
   char time_str[LOGGER_TIME_STR_SIZE];
   if (!lg_get_time_str(time_str, isLocalTime)) return false;
 
+  LgString* stdout_str = &pack[LG_OUT_TTY];
+  LgString* file_str   = &pack[LG_OUT_FILE];
+
   const char* lvlstr = lg_lvl_to_str(level);
-  if (pack->stdout_str.data) {
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
     lg_str_format_into(
-      &pack->stdout_str,
-      "%s {%s} %s\n", time_str, lvlstr, msg);
+      stdout_str,
+      "%s {%s} %s\n",
+      time_str, lvlstr, msg);
   }
   
-  if (pack->file_str.data) {
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE)) {
     lg_str_format_into(
-      &pack->file_str,
-      "%s {%s} %s\n", time_str, lvlstr, msg);
+      file_str,
+      "%s {%s} %s\n",
+      time_str, lvlstr, msg);
   }
   return true;
 }

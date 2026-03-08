@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 use std::os::raw::{c_char, c_int, c_void};
 
+pub const LOGGER_MAX_MSG_SIZE: usize = 1024;
+pub const LOGGER_TIME_STR_SIZE: usize = 24;
+
 // Log Levels
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -16,11 +19,22 @@ pub enum LgLogLevel {
 #[derive(Copy, Clone)]
 pub enum LgLogPolicy {
   Drop          = 1 << 0,
-  SmashOldest   = 1 << 1,
+  Block         = 1 << 1,
+  PriorityBased = 1 << 2,
+}
+
+// Message Out Types
+#[repr(C)]
+#[derive(Copy, Clone,PartialEq)]
+pub enum LgOutType {
+  TTY = 0,
+  File = 1,
+  Net = 2,
+  Max = 3,
 }
 
 pub type LogFormatterT = unsafe extern "C" fn(
-    c_int, LgLogLevel, *const c_char, *mut LgMsgPack) -> c_int;
+    c_int, LgLogLevel, *const c_char, u32, *mut LgString) -> c_int;
 
 // Config struct
 #[repr(C)]
@@ -43,17 +57,56 @@ pub struct Logger {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct LgString {
-  pub data: *mut c_char,
-  pub cap: usize,
+  pub data: [c_char; LOGGER_MAX_MSG_SIZE],
   pub len: usize,
 }
 
-// Logger message pack
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct LgMsgPack {
-  pub file_str: LgString,
-  pub stdout_str: LgString,
+pub fn _contains_flag(needed: u32, flag: LgOutType) -> bool {
+  needed & (1 << flag as u32) != 0
+}
+
+#[macro_export]
+macro_rules! lg_formatter {
+  ($name:ident, $body:expr) => {
+    unsafe extern "C" fn $name(
+      local_time: c_int,
+      level: LgLogLevel,
+      msg: *const c_char,
+      needed: u32,
+      pack: *mut LgString,
+    ) -> c_int {
+      let func: fn(&str, &str, &str, LgOutType) -> String = $body;
+
+      let level_str = unsafe {
+        CStr::from_ptr(lg_lvl_to_str(level)).to_str().unwrap_or("")
+      };
+      let msg_str = unsafe {
+        CStr::from_ptr(msg).to_str().unwrap_or("")
+      };
+
+      let mut time_buf = [0i8; LOGGER_TIME_STR_SIZE];
+      let time_str: &str = unsafe {
+        if lg_get_time_str(time_buf.as_mut_ptr(), local_time) == 1 {
+          CStr::from_ptr(time_buf.as_ptr()).to_str().unwrap_or("")
+        } else { "" }
+      };
+
+      // TTY
+      if _contains_flag(needed, LgOutType::TTY) {
+        let tty_result = func(time_str, level_str, msg_str, LgOutType::TTY) + "\n";
+        let tty_cstr = CString::new(tty_result).unwrap();
+        unsafe { lg_str_write_into(pack.add(LgOutType::TTY as usize), tty_cstr.as_ptr()); }
+      }
+
+      // FILE
+      if _contains_flag(needed, LgOutType::File) {
+        let file_result = func(time_str, level_str, msg_str, LgOutType::File) + "\n";
+        let file_cstr = CString::new(file_result).unwrap();
+        unsafe { lg_str_write_into(pack.add(LgOutType::File as usize), file_cstr.as_ptr()); }
+      }
+      return 1;
+    }
+  };
 }
 
 // Functions

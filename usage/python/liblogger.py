@@ -1,7 +1,33 @@
 """
+  The MIT License
+  Copyright (c) 2026, ilpeN
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+
+  TLDR:
+    do whatever you want, just keep the license text
+
   Logger library importings and stuffs in Python
   Import this in your python project
 """
+
+__all__ = ["Logger"]
 
 from cffi import FFI
 from enum import IntEnum
@@ -14,36 +40,45 @@ typedef enum {
   LG_ERROR = 1 << 1,
   LG_WARNING = 1 << 2,
   LG_CUSTOM = 1 << 3,
-} lg_log_level;
+} LgLogLevel;
+
+typedef enum {
+  LG_OUT_TTY = 0,
+  LG_OUT_FILE = 1,
+  LG_OUT_NET = 2,
+  LG_OUT_MAX = 3,
+} LgOutType;
 
 typedef enum {
   LG_DROP = 1 << 0,
-  LG_SMASH_OLDEST = 1 << 1,
-} lg_log_policy;
+  LG_BLOCK = 1 << 1,
+  LG_PRIORITY_BASED = 1 << 2,
+} LgLogPolicy;
+
+#define LOGGER_MAX_MSG_SIZE 1024
 
 typedef struct Logger Logger;
-typedef struct lg_string lg_string;
-typedef struct lg_msg_pack lg_msg_pack;
 
-struct lg_string {
-  char* data;
-  size_t cap;
+typedef struct LgString {
+  char data[LOGGER_MAX_MSG_SIZE];
   size_t len;
-};
+} LgString;
 
-struct lg_msg_pack {
-  lg_string file_str;
-  lg_string stdout_str;
-};
+typedef LgString LgMsgPack[LG_OUT_MAX];
 
-typedef int (*log_formatter_t)(const int isLocalTime, const lg_log_level level,
-                               const char* msg, lg_msg_pack* pack);
+typedef int (*log_formatter_t)(
+  int isLocalTime,
+  LgLogLevel level,
+  const char* msg,
+  uint32_t needed,
+  LgMsgPack out
+);
 
 typedef struct {
   int localTime;
   int printStdout;
   int maxFiles;
-  lg_log_policy logPolicy;
+  LgLogPolicy logPolicy;
   log_formatter_t logFormatter;
 } LoggerConfig;
 
@@ -57,15 +92,15 @@ int lg_is_alive(const Logger* instance);
 int lg_finfo(const char* msg);
 int lg_ferror(const char* msg);
 int lg_fwarn(const char* msg);
-int lg_flog(lg_log_level level, const char* msg);
+int lg_flog(LgLogLevel level, const char* msg);
 
-int lg_flogi(Logger* lg, lg_log_level level, const char* msg);
+int lg_flogi(Logger* lg, LgLogLevel level, const char* msg);
 int lg_finfoi(Logger* lg, const char* msg);
 int lg_ferrori(Logger* lg, const char* msg);
 int lg_fwarni(Logger* lg, const char* msg);
 
-void lg_str_write_into(lg_string* s, const char* str);
-const char* lg_lvl_to_str(const lg_log_level level);
+void lg_str_write_into(LgString* s, const char* str);
+const char* lg_lvl_to_str(const LgLogLevel level);
 int lg_get_time_str(char* buf, int isLocalTime);
 
 Logger* lg_alloc();
@@ -85,6 +120,9 @@ else:
 dll_path = os.path.abspath(f"../../build/{lib_name}")
 _logger = ffi.dlopen(dll_path)
 
+def _contains_flag(needed, flag) -> bool:
+  return bool(needed & (1 << flag))
+
 def _decode_cstr(cstr) -> str:
   return ffi.string(cstr).decode("utf-8")
 
@@ -95,8 +133,9 @@ class LogLevel(IntEnum):
   CUSTOM  = 1 << 3
 
 class LogPolicy(IntEnum):
-  DROP         = 1 << 0
-  SMASH_OLDEST = 1 << 1
+  DROP           = 1 << 0
+  BLOCK          = 1 << 1
+  PRIORITY_BASED = 1 << 2
 
 class Logger:
   def __init__(self, _ptr=None) -> None:
@@ -183,22 +222,22 @@ class Logger:
   # Func is full python function (parameters etc.) go to main.py
   @staticmethod
   def logFormatter(func):
-    @ffi.callback("int(const int, lg_log_level, const char*, lg_msg_pack*)")
-    def wrapper(local_time, level, msg, pack):
+    @ffi.callback("int(int, LgLogLevel, const char*, uint32_t, LgString*)")
+    def wrapper(local_time, level, msg, needed, pack):
       p_level_str = _decode_cstr(_logger.lg_lvl_to_str(level))
       p_local_time = True if local_time == 1 else False
       p_msg_str = _decode_cstr(msg)
-  
-      # Get stdout string
-      if pack.stdout_str.data != ffi.NULL:
-        result: str = func(p_local_time, p_level_str, p_msg_str, True) + "\n"
-        _logger.lg_str_write_into(ffi.addressof(pack.stdout_str), result.encode())
-  
-      # Get file string
-      if pack.file_str.data != ffi.NULL:
-        result: str = func(p_local_time, p_level_str, p_msg_str, False) + "\n"
-        _logger.lg_str_write_into(ffi.addressof(pack.file_str), result.encode())
-  
+
+      stdout_str = ffi.addressof(pack, _logger.LG_OUT_TTY)
+      file_str   = ffi.addressof(pack, _logger.LG_OUT_FILE)
+
+      if _contains_flag(needed, _logger.LG_OUT_TTY):
+        result_tty = func(p_local_time, p_level_str, p_msg_str, True)  + "\n"
+        _logger.lg_str_write_into(stdout_str, result_tty.encode())
+      
+      if _contains_flag(needed, _logger.LG_OUT_FILE):
+        result_file = func(p_local_time, p_level_str, p_msg_str, False) + "\n"
+        _logger.lg_str_write_into(file_str, result_file.encode())
       return 1
   
     return wrapper
