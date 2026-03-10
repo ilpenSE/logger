@@ -34,7 +34,7 @@
 
 class LoggerStream {
 public:
-  explicit LoggerStream(lg_log_level level)
+  explicit LoggerStream(LgLogLevel level)
     : m_level(std::move(level)) {}
 
   ~LoggerStream() {
@@ -66,7 +66,7 @@ private:
   bool m_first = true;
   std::ostringstream m_buffer;
   const char m_delimiter = ' ';
-  lg_log_level m_level;
+  LgLogLevel m_level;
 };
 
 #define sinfo   LoggerStream(LG_INFO)

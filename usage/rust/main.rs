@@ -38,12 +38,16 @@ fn main() {
     let logs_dir = CString::new("logs").unwrap();
     let formatter: LogFormatterT = myFormatter;
 
-    let config = LoggerConfig {
+    let mut config = LoggerConfig {
       local_time: 1,
-      print_stdout: 1,
+      max_files: 0,
+      generate_default_file: 1,
       log_policy: LgLogPolicy::Drop,
+      sinks: LgSinks::default(),
       log_formatter: None, //Some(formatter), // FUCK ALL RUST DEVELOPERS AND GOONERS
     };
+    lg_append_sink(&mut config, lg_get_stdout(), LgOutType::TTY);
+    lg_append_sink(&mut config, lg_fopen(cstr!("some.log")), LgOutType::Net);
 
     let lg = lg_alloc();
     let ires = lg_init(lg, logs_dir.as_ptr(), config);

@@ -1,6 +1,6 @@
 # This makefile only works on UNIX/Linux
 CC = gcc
-CFLAGS = -std=c99 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra -shared
+CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra -shared
 
 BUILD_FOLDER = build
 HEADER = logger.h

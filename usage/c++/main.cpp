@@ -85,18 +85,15 @@ void stress_test() {
   testFile.flush();
 }
 
-int myFormatter(int isLocalTime, LgLogLevel level,
+int myFormatter(const char* time_str, LgLogLevel level,
                 const char* msg, uint32_t needed, LgMsgPack pack) {
-  char time_str[LOGGER_TIME_STR_SIZE];
-  if (!lg_get_time_str(time_str, isLocalTime)) return false;
-
-  LgString* stdout_str = &pack[LG_OUT_TTY];
-  LgString* file_str   = &pack[LG_OUT_FILE];
-
+  LgString* tty_str  = &pack[LG_OUT_TTY];
+  LgString* file_str = &pack[LG_OUT_FILE];
   const char* lvlstr = lg_lvl_to_str(level);
+
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
     lg_str_format_into(
-      stdout_str,
+      tty_str,
       "%s {%s} %s\n",
       time_str, lvlstr, msg);
   }
@@ -113,12 +110,13 @@ int myFormatter(int isLocalTime, LgLogLevel level,
 int main() {
   Logger* lg = lg_alloc();
 
-  LoggerConfig conf;
+  LoggerConfig conf = {};
   conf.localTime = true;
-  conf.printStdout = true;
   conf.maxFiles = 10;
+  conf.generateDefaultFile = true;
   conf.logPolicy = LG_DROP;
   conf.logFormatter = myFormatter;
+  lg_append_sink(&conf, stdout, LG_OUT_TTY);
 
   if (!lg_init(lg, "logs", conf)) {
     std::cerr << "[MAIN] Logger init failed\n";

@@ -27,7 +27,7 @@
   Import this in your python project
 """
 
-__all__ = ["Logger"]
+__all__ = ["Logger", "LogOutType", "LogPolicy", "LogLevel", "LogSink", "LogSinks"]
 
 from cffi import FFI
 from enum import IntEnum
@@ -43,19 +43,22 @@ typedef enum {
 } LgLogLevel;
 
 typedef enum {
-  LG_OUT_TTY = 0,
-  LG_OUT_FILE = 1,
-  LG_OUT_NET = 2,
-  LG_OUT_MAX = 3,
-} LgOutType;
-
-typedef enum {
   LG_DROP = 1 << 0,
   LG_BLOCK = 1 << 1,
   LG_PRIORITY_BASED = 1 << 2,
 } LgLogPolicy;
 
+typedef enum {
+  LG_OUT_TTY = 0,
+  LG_OUT_FILE = 1,
+  LG_OUT_NET = 2,
+  // Add more out types here
+  // Dont forget to update LOGGER_MAX_OUT_TYPES
+} LgOutType;
+
+#define LOGGER_MAX_OUT_TYPES 3
 #define LOGGER_MAX_MSG_SIZE 1024
+#define LOGGER_MAX_SINKS 8
 
 typedef struct Logger Logger;
 
@@ -64,10 +67,20 @@ typedef struct LgString {
   size_t len;
 } LgString;
 
-typedef LgString LgMsgPack[LG_OUT_MAX];
+typedef LgString LgMsgPack[LOGGER_MAX_OUT_TYPES];
+
+typedef struct {
+  FILE* file;
+  LgOutType type;
+} LgSink;
+
+typedef struct {
+  LgSink items[LOGGER_MAX_SINKS];
+  size_t count;
+} LgSinks;
 
 typedef int (*log_formatter_t)(
-  int isLocalTime,
+  const char* time_str,
   LgLogLevel level,
   const char* msg,
   uint32_t needed,
@@ -76,8 +89,9 @@ typedef int (*log_formatter_t)(
 
 typedef struct {
   int localTime;
-  int printStdout;
   int maxFiles;
+  int generateDefaultFile;
+  LgSinks sinks;
   LgLogPolicy logPolicy;
   log_formatter_t logFormatter;
 } LoggerConfig;
@@ -102,6 +116,12 @@ int lg_fwarni(Logger* lg, const char* msg);
 void lg_str_write_into(LgString* s, const char* str);
 const char* lg_lvl_to_str(const LgLogLevel level);
 int lg_get_time_str(char* buf, int isLocalTime);
+LoggerConfig lg_get_defaults();
+int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);
+
+FILE* lg_get_stdout();
+FILE* lg_get_stderr();
+FILE* lg_fopen(const char* name);
 
 Logger* lg_alloc();
 void    lg_free(Logger* inst);
@@ -132,23 +152,63 @@ class LogLevel(IntEnum):
   WARNING = 1 << 2
   CUSTOM  = 1 << 3
 
+  def __str__(self):
+    return self.name
+
 class LogPolicy(IntEnum):
   DROP           = 1 << 0
   BLOCK          = 1 << 1
   PRIORITY_BASED = 1 << 2
 
+class LogOutType(IntEnum):
+  TTY  = 0
+  FILE = 1
+  NET  = 2
+
+class LoggerConfig:
+  _FIELDS = {
+    "localTime":           lambda v: 1 if v else 0,
+    "generateDefaultFile": lambda v: 1 if v else 0,
+    "maxFiles":            lambda v: int(v),
+    "logPolicy":           lambda v: int(v),
+    "logFormatter":        lambda v: ffi.NULL if v is None else v,
+  }
+
+  def __init__(self, **kwargs):
+    object.__setattr__(self, "_c", ffi.new("LoggerConfig*"))
+    for key, val in kwargs.items():
+      setattr(self, key, val)
+
+  def __setattr__(self, name, value):
+    if name in self._FIELDS:
+      setattr(self._c, name, self._FIELDS[name](value))
+    else:
+      object.__setattr__(self, name, value)
+
+  def __getattr__(self, name):
+    if name in self._FIELDS:
+      return getattr(self._c, name)
+    raise AttributeError(f"No field: {name}")
+
+  def append_sink(self, file_ptr, out_type: LogOutType) -> bool:
+    return bool(_logger.lg_append_sink(self._c, file_ptr, out_type))
+
+  def get_c_struct(self):
+    return self._c[0]
+
+  @staticmethod
+  def default() -> "LoggerConfig":
+    c_defaults = _logger.lg_get_defaults()
+    cfg = LoggerConfig()
+    cfg._c[0] = c_defaults
+    return cfg
+
 class Logger:
   def __init__(self, _ptr=None) -> None:
     self._ptr = _ptr if _ptr is not None else _logger.lg_alloc()
 
-  def init(self, logs_dir: str, **kwargs) -> bool:
-    cfg = ffi.new("LoggerConfig*")
-    cfg.printStdout  = kwargs.get("printStdout", 0)
-    cfg.localTime    = kwargs.get("localTime", 0)
-    cfg.maxFiles     = kwargs.get("maxFiles", 0)
-    cfg.logPolicy    = kwargs.get("logPolicy", LogPolicy.DROP)
-    cfg.logFormatter = kwargs.get("logFormatter", ffi.NULL)
-    return bool(_logger.lg_init(self._ptr, logs_dir.encode(), cfg[0]))
+  def init(self, logs_dir: str, config: "LoggerConfig") -> bool:
+    return bool(_logger.lg_init(self._ptr, logs_dir.encode(), config.get_c_struct()))
 
   def destroy(self) -> bool:
     return bool(_logger.lg_destroy(self._ptr))
@@ -198,14 +258,48 @@ class Logger:
 
   def logi(self, level: LogLevel, msg: str) -> bool:
     return bool(_logger.lg_flogi(self._ptr, level, msg.encode()))
-  
+
+  # Decorator for custom formatter
+  # Func is full python function (parameters etc.) go to main.py
+  # Func signature: func(str, str, str, LogOutType): str
   @staticmethod
-  def get_active_instance() -> "Logger":
-    return Logger(_ptr=_logger.lg_get_active_instance())
+  def logFormatter(func):
+    @ffi.callback("int(const char*, LgLogLevel, const char*, uint32_t, LgString*)")
+    def wrapper(time_str, level, msg, needed, pack):
+      p_level_str = _decode_cstr(_logger.lg_lvl_to_str(level))
+      p_time_str  = _decode_cstr(time_str)
+      p_msg_str   = _decode_cstr(msg)
+
+      tty_str  = ffi.addressof(pack, LogOutType.TTY)
+      file_str = ffi.addressof(pack, LogOutType.FILE)
+      net_str  = ffi.addressof(pack, LogOutType.NET)
+
+      # TTY Output Type
+      if _contains_flag(needed, LogOutType.TTY):
+        result_tty = func(p_time_str, p_level_str, p_msg_str, LogOutType.TTY) + "\n"
+        _logger.lg_str_write_into(tty_str, result_tty.encode())
+
+      # File Output Type
+      if _contains_flag(needed, LogOutType.FILE):
+        result_file = func(p_time_str, p_level_str, p_msg_str, LogOutType.FILE) + "\n"
+        _logger.lg_str_write_into(file_str, result_file.encode())
+
+      # Net Output Type
+      if _contains_flag(needed, LogOutType.NET):
+        result_net = func(p_time_str, p_level_str, p_msg_str, LogOutType.NET) + "\n"
+        _logger.lg_str_write_into(net_str, result_net.encode())
+      return 1
+    return wrapper
+
+class LoggerUtils:
+  @staticmethod
+  def get_instance() -> "Logger | None":
+    inst = _logger.lg_get_active_instance()
+    return None if inst == ffi.NULL else Logger(inst)
 
   @staticmethod
-  def set_active_instance(inst: "Logger") -> bool:
-    return bool(_logger.lg_set_active_instance(inst._ptr))
+  def set_instance(lg: "Logger") -> bool:
+    return bool(_logger.lg_set_active_instance(lg._ptr))
 
   @staticmethod
   def get_time_str(local_time: bool) -> str:
@@ -215,29 +309,13 @@ class Logger:
     return _decode_cstr(buf)
 
   @staticmethod
-  def lvl_to_str(level: LogLevel) -> str:
-    return _decode_cstr(_logger.lg_lvl_to_str(level))
+  def file_from_path(path: str):
+    return _logger.lg_fopen(path.encode())
 
-  # Decorator for custom formatter
-  # Func is full python function (parameters etc.) go to main.py
   @staticmethod
-  def logFormatter(func):
-    @ffi.callback("int(int, LgLogLevel, const char*, uint32_t, LgString*)")
-    def wrapper(local_time, level, msg, needed, pack):
-      p_level_str = _decode_cstr(_logger.lg_lvl_to_str(level))
-      p_local_time = True if local_time == 1 else False
-      p_msg_str = _decode_cstr(msg)
+  def stdout():
+    return _logger.lg_get_stdout()
 
-      stdout_str = ffi.addressof(pack, _logger.LG_OUT_TTY)
-      file_str   = ffi.addressof(pack, _logger.LG_OUT_FILE)
-
-      if _contains_flag(needed, _logger.LG_OUT_TTY):
-        result_tty = func(p_local_time, p_level_str, p_msg_str, True)  + "\n"
-        _logger.lg_str_write_into(stdout_str, result_tty.encode())
-      
-      if _contains_flag(needed, _logger.LG_OUT_FILE):
-        result_file = func(p_local_time, p_level_str, p_msg_str, False) + "\n"
-        _logger.lg_str_write_into(file_str, result_file.encode())
-      return 1
-  
-    return wrapper
+  @staticmethod
+  def stderr():
+    return _logger.lg_get_stderr()
