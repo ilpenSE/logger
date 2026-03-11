@@ -1,8 +1,8 @@
-CC := gcc
-CFLAGS := -Wall -Wextra -I../..
+CC = gcc
+CFLAGS = -Wall -Wextra -I../..
 
-TARGET := app
-SRC := test.c main.c
+TARGET = app
+SRC = test.c main.c
 
 all: $(TARGET)
 

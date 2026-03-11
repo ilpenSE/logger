@@ -1,6 +1,6 @@
 // THIS IS PRE-RELEASE OF LOGGER!
 // NOT ALL ENVIRONMENTS CAN SUPPORT!
-// TESTED ON X86_64 GNU/LINUX
+// TESTED ON X86_64 GNU/LINUX AND WINDOWS
 
 /*
   The MIT License
@@ -35,7 +35,7 @@
   THIS IS STB-STYLE LIBRARY HEADER OF LOGGER.
   IT IS WRITTEN IN PURE C, SAFE TO USE IN C++
   REQUIRES MINIMUM C11 VERSION
-  TESTED ON AMD64 GNU/LINUX WITH GCC/CLANG
+  TESTED ON AMD64 (X86_64) GNU/LINUX WITH GCC/CLANG, MINGW AND MSVC-WINE
 
   MACROS THAT YOU CAN USE:
   LOGGER_IMPLEMENTATION -> Implementation of this header (USE THIS ONCOMPILATION OR USAGE)
@@ -426,13 +426,13 @@ LOGGERDEF FILE* lg_fopen(const char* path);
 // stb style implementation macros
 #ifdef LOGGER_IMPLEMENTATION
 
-#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdalign.h>
 
 // Transpilation from C++11 to C11
 #ifdef __cplusplus
@@ -453,7 +453,8 @@ LOGGERDEF FILE* lg_fopen(const char* path);
 #endif
 
 #define LOGGER_CACHE_LINE 64
-#define LOGGER_ALIGN __attribute__((aligned(LOGGER_CACHE_LINE)))
+
+#define LOGGER_ALIGN alignas(LOGGER_CACHE_LINE)
 
 typedef struct {
   char msg[LOGGER_MAX_MSG_SIZE];
@@ -533,8 +534,8 @@ LOGGER_INTERNAL inline LogPayload* lgi_slot_payload(LogSlot* s)
 // Manual writes for lg_get_time_str
 LOGGER_INTERNAL inline void lgi_write2(char* p, int v)
 {
-  p[0] = '0' + v / 10;
-  p[1] = '0' + v % 10;
+  p[0] = (char)('0' + v / 10);
+  p[1] = (char)('0' + v % 10);
 }
 
 LOGGER_INTERNAL inline void lgi_write4(char* p, int v)
@@ -545,15 +546,21 @@ LOGGER_INTERNAL inline void lgi_write4(char* p, int v)
 
 LOGGER_INTERNAL inline void lgi_write3(char* p, int v)
 {
-  p[0] = '0' + v / 100;
-  p[1] = '0' + (v / 10) % 10;
-  p[2] = '0' + v % 10;
+  p[0] = (char)('0' + v / 100);
+  p[1] = (char)('0' + (v / 10) % 10);
+  p[2] = (char)('0' + v % 10);
 }
 
 // Some other macro-utilities
 #define LG_UNUSED(x) (void)(x)
 #define LG_STRINGIFY(x) #x
 #define LG_TOSTRING(x) LG_STRINGIFY(x)
+// Fuck you MSVC with C++
+#ifdef __cplusplus
+  #define LG_STRUCT(T, ...) (T{__VA_ARGS__})
+#else
+  #define LG_STRUCT(T, ...) ((T){__VA_ARGS__})
+#endif
 
 // define this macro to enable error messages in stderr
 #ifdef LOGGER_DEBUG
@@ -573,22 +580,18 @@ LOGGER_INTERNAL inline void lgi_write3(char* p, int v)
 #ifdef _WIN32
 #include <direct.h>  // _mkdir
 #include <windows.h>
-#include <intrin.h>
+#include <malloc.h>
 #include <io.h>
 
 #define LOGGER_MKDIR(path) _mkdir(path)
-#define LOGGER_PAUSE_INS() _mm_pause()
 #define LOGGER_PATH_SEP '\\'
+#ifndef PATH_MAX
 #define PATH_MAX (MAX_PATH * 2) // for wchar_t
-#define isatty _isatty
-#define fileno _fileno
+#endif
 
 // Sleep() has terrible resolution (milliseconds)
 // But who uses winbloat for production-ready logger?
-#define LOGGER_SLEEP(us)                        \
-  do {                                          \
-    Sleep(1);                                   \
-  } while (0)
+#define LOGGER_SLEEP(ns) do { Sleep(1); } while (0)
 
 // threads transpilation for windows to posix
 typedef HANDLE pthread_t;
@@ -645,23 +648,43 @@ static int pthread_create(pthread_t* t, void* attr,
 #include <dirent.h>
 #include <unistd.h>
 
-// sleep for us microseconds
-#define LOGGER_SLEEP(us)                                            \
+// sleep for ns nanoseconds
+#define LOGGER_SLEEP(ns)                                            \
   do {                                                              \
-    struct timespec ts = {(us) / 1000000, ((us) % 1000000) * 1000}; \
+    struct timespec ts = {(ns) / 1000000000L, (ns) % 1000000000L};  \
     nanosleep(&ts, NULL);                                           \
   } while (0)
 #define LOGGER_MKDIR(path) mkdir(path, 0755)
 #define LOGGER_PATH_SEP '/'
-
-#if defined(__x86_64__) || defined(__i386__) // amd64/x86_64 or i386/x86/x86_32
-  #define LOGGER_PAUSE_INS() __asm__ volatile("pause" ::: "memory")
-#elif defined(__aarch64__) // ARM64
-  #define LOGGER_PAUSE_INS() __asm__ volatile("yield" ::: "memory")
-#else
-#error "No such supported platform for pause instruction"
 #endif
 
+// Aligned alloc
+#if defined(_MSC_VER) || defined(__MINGW32__)
+  #define ALIGNED_ALLOC(align, size) _aligned_malloc(size, align)
+  #define ALIGNED_FREE(ptr)          _aligned_free(ptr)
+#else
+  #define ALIGNED_ALLOC(align, size) aligned_alloc(align, size)
+  #define ALIGNED_FREE(ptr)          free(ptr)
+#endif
+
+// Pause instruction
+#ifdef _MSC_VER
+  #include <intrin.h>
+  #if defined(_M_X64) || defined(_M_IX86)
+    #define LOGGER_PAUSE_INS() _mm_pause() // MSVC X86/X64 intrinsic
+  #elif defined(_M_ARM64)
+    #define LOGGER_PAUSE_INS() __yield()  // MSVC ARM64 intrinsic
+  #else
+    #error "Unsupported MSVC platform for pause instruction"
+  #endif
+#else
+  #if defined(__x86_64__) || defined(__i386__) // amd64/x86_64 or i386/x86/x86_32
+    #define LOGGER_PAUSE_INS() __asm__ volatile("pause" ::: "memory")
+  #elif defined(__aarch64__) // ARM64
+    #define LOGGER_PAUSE_INS() __asm__ volatile("yield" ::: "memory")
+  #else
+    #error "No such supported platform for pause instruction"
+  #endif
 #endif
 
 /*
@@ -678,7 +701,7 @@ struct Logger {
   LgSink  sinks[LOGGER_MAX_SINKS + 1]; // extra 1 for default file for any condition
   size_t  sinks_count;
   log_formatter_t customLogFunc;
-  unsigned int out_needed; // needed file flags for formatter
+  uint32_t out_needed; // needed file flags for formatter
   pthread_t writer_th;
   LogQueue* queue;
 };
@@ -696,7 +719,8 @@ LOGGER_INTERNAL void* lgi_consumer(void* arg) {
   }
 
   // isAlive = false, drain remaining entries
-  while (lgi_queue_ppr(inst, &entry, &pos));
+  while (lgi_queue_ppr(inst, &entry, &pos))
+    ;;
 
   LG_DEBUG("Writer thread is exiting");
   return NULL;
@@ -809,7 +833,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
   memcpy(inst->sinks, config.sinks.items, cnt * sizeof(LgSink));
   inst->sinks_count = is_gen_def_file + cnt;
   if (is_gen_def_file) {
-    inst->sinks[cnt] = (LgSink){logFile, LG_OUT_FILE};
+    inst->sinks[cnt] = LG_STRUCT(LgSink, logFile, LG_OUT_FILE);
   }
 
   uint32_t needed = 0;
@@ -984,7 +1008,7 @@ Logger* lg_alloc()
 
 void lg_free(Logger* inst)
 {
-  free(inst->queue);
+  ALIGNED_FREE(inst->queue);
   free(inst);
 }
 
@@ -1043,7 +1067,7 @@ const char* lg_lvl_to_str(const LgLogLevel level)
 }
 
 LoggerConfig lg_get_defaults() {
-  LgSinks sinks = { {(LgSink){stdout, LG_OUT_TTY} }, 1};
+  LgSinks sinks = { {LG_STRUCT(LgSink, stdout, LG_OUT_TTY) }, 1};
   LoggerConfig cfg;
   cfg.localTime = true;
   cfg.maxFiles = 0;
@@ -1057,7 +1081,7 @@ LoggerConfig lg_get_defaults() {
 int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type) {
   if (!config) return false;
   if (config->sinks.count >= LOGGER_MAX_SINKS) return false;
-  config->sinks.items[config->sinks.count++] = (LgSink) {f, type};
+  config->sinks.items[config->sinks.count++] = LG_STRUCT(LgSink, f, type);
   return true;
 }
 
@@ -1310,7 +1334,7 @@ LOGGER_INTERNAL int lgi_def_format_msg(
   LgString* net_str = &pack[LG_OUT_NET];
   const char* level_str = lg_lvl_to_str(level);
 
-  // prepairing stdout msg
+  // preparing stdout msg
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
 #ifdef LOGGER_DONT_COLORIZE
     lg_str_format_into(
@@ -1342,7 +1366,7 @@ LOGGER_INTERNAL int lgi_def_format_msg(
 #endif
   }
 
-  // prepairing file msg
+  // preparing file msg
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE)) {
     // no escape chars in file
     lg_str_format_into(
@@ -1352,7 +1376,7 @@ LOGGER_INTERNAL int lgi_def_format_msg(
     );
   }
 
-  // prepairing network msg (JSON)
+  // preparing network msg (JSON)
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_NET)) {
     lg_str_format_into(
       net_str,
@@ -1370,8 +1394,8 @@ LOGGER_INTERNAL LogQueue* lgi_queue_create(size_t capacity) {
                   & ~(size_t)(LOGGER_CACHE_LINE - 1);
   size_t total  = sizeof(LogQueue) + capacity * stride;
 
-  // void* aligned_alloc(size_t alignment, size_t size); (since C11, stdlib.h)
-  LogQueue* q = (LogQueue*)aligned_alloc(LOGGER_CACHE_LINE, total);
+  // TODO: Make this stack-allocated and fixed-size
+  LogQueue* q = (LogQueue*)ALIGNED_ALLOC(LOGGER_CACHE_LINE, total);
   if (!q) return NULL;
 
   // Set the fields
@@ -1433,8 +1457,7 @@ LOGGER_INTERNAL void lgi_adaptive_wait(int* spins) {
     *spins += 1;
     LOGGER_PAUSE_INS();
   } else {
-    struct timespec ts = {0, 1000};
-    nanosleep(&ts, NULL); // real sleep
+    LOGGER_SLEEP(1);
   }
 }
 

@@ -1,0 +1,21 @@
+CC = cl
+BUILD = build
+CFLAGS=/W4 /I"..\\.." /Fo"$(BUILD)\\" /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT /std:c11 /experimental:c11atomics
+
+TARGET = app.exe
+SRC = test.c main.c
+
+all: $(TARGET)
+
+$(BUILD):
+	mkdir $(BUILD)
+
+$(TARGET): $(SRC) ..\..\logger.h $(BUILD)
+	$(CC) $(CFLAGS) $(SRC) /Fe:$(BUILD)\$(TARGET)
+	move $(BUILD)\$(TARGET) .
+
+clean:
+	if exist $(TARGET) del $(TARGET)
+	rmdir /S /Q $(BUILD)
+
+.PHONY: all clean

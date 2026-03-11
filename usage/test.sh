@@ -53,8 +53,6 @@ test_all() {
 }
 
 case $1 in
-  js | javascript)
-    echo "JS usage is deprecated and it won't be updated anymore" ;;
   cpp | c++)
     test_cpp ;;
   rust)
@@ -63,8 +61,8 @@ case $1 in
     test_c ;;
   py | python)
     test_python ;;
-  java)
-    echo "Java usage is deprecated and it won't be updated anymore" ;;
-  *)
+  all)
     test_all ;;
+  *)
+    echo "Unkown option." ;;
 esac
