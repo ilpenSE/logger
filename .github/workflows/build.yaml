@@ -2,9 +2,13 @@ name: Build Logger Library
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
+      - 4.0
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+      - 4.0
 
 jobs:
   build-linux:
