@@ -1,5 +1,5 @@
 # This makefile only works on UNIX/Linux
-CC = clang
+CC = gcc
 CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
 
 BUILD = build

@@ -1,7 +1,3 @@
-// THIS IS PRE-RELEASE OF LOGGER!
-// NOT ALL ENVIRONMENTS CAN SUPPORT!
-// TESTED ON X86_64 GNU/LINUX AND WINDOWS
-
 /*
   The MIT License
   Copyright (c) 2026, ilpeN
@@ -94,8 +90,8 @@
 // These variables can be fine-tuned due to your traffic
 // High traffic = high these constants
 // Low traffic = lower values
-#define LOGGER_WAIT_NO_PAUSE_MAGIC 100
-#define LOGGER_WAIT_PAUSE_MAGIC 1000
+#define LOGGER_WAIT_NO_PAUSE_MAGIC 128
+#define LOGGER_WAIT_PAUSE_MAGIC 1024
 
 /*
   Defines time_str from lg_get_time_str size (WITH ZERO AT THE END!)
@@ -106,8 +102,6 @@
 
 // logger max message size (you can change it)
 #define LOGGER_MAX_MSG_SIZE 256
-// ring buffer's size
-#define LOGGER_RING_SIZE 1024
 
 // Maximum amount of files that can be in the sink (not really useful now)
 #define LOGGER_MAX_SINKS 8
@@ -447,6 +441,7 @@ LOGGERDEF FILE* lg_fopen(const char* path);
 #define atomic_load_explicit std::atomic_load_explicit
 #define atomic_fetch_add_explicit std::atomic_fetch_add_explicit
 #define atomic_compare_exchange_weak_explicit std::atomic_compare_exchange_weak_explicit
+#define atomic_compare_exchange_strong_explicit std::atomic_compare_exchange_strong_explicit
 #else
 #include <stdatomic.h>
 #define ATOMIC(T) _Atomic(T)
@@ -463,18 +458,24 @@ typedef struct {
 } LogPayload;
 
 typedef struct {
-  ATOMIC(size_t) seq;
-  char payload[];
+  LOGGER_ALIGN ATOMIC(size_t) seq;
+  LogPayload payload;
 } LogSlot;
 
-typedef struct {
-  size_t capacity; // power of 2
-  size_t mask; // capacity - 1 
-  size_t stride; // width of the full slot with padding, seq payload
+// ring buffer's size (has to be power of 2)
+#define LOGGER_RING_SIZE 1024
+#define LOGGER_RING_MASK (LOGGER_RING_SIZE - 1)
+#if (LOGGER_RING_SIZE & LOGGER_RING_MASK) != 0
+#error "Ring buffer's size is not power of 2!"
+#endif
+#define LOGGER_RING_STRIDE ((sizeof(LogSlot) + LOGGER_CACHE_LINE - 1) \
+                            & ~(size_t)(LOGGER_CACHE_LINE - 1))
+#define LOGGER_RING_TOTAL_SIZE (LOGGER_RING_SIZE * LOGGER_RING_STRIDE)
 
+typedef struct {
   LOGGER_ALIGN ATOMIC(size_t) head; // Producer
   LOGGER_ALIGN size_t tail; // Consumer
-  uint8_t slots[];
+  uint8_t slots[LOGGER_RING_TOTAL_SIZE];
 } LogQueue;
 
 // Static function forward-declerations
@@ -496,7 +497,7 @@ LOGGER_INTERNAL int lgi_def_format_msg(const char* time_str, LgLogLevel level,
                                       const char* msg, uint32_t needed, LgMsgPack pack);
 
 // Create MPSC queue with given capacity (capacity must be power of 2)
-LOGGER_INTERNAL LogQueue* lgi_queue_create(size_t capacity);
+LOGGER_INTERNAL void lgi_queue_create(LogQueue* q);
 
 // Pop something from the MPSC queue (Consumer)
 LOGGER_INTERNAL bool lgi_queue_pop(LogQueue* q, LogPayload** out, size_t* pos);
@@ -522,39 +523,44 @@ LOGGER_INTERNAL void lgi_adaptive_wait(int* spins);
 // Return the slot by idx from the given queue
 LOGGER_INTERNAL inline LogSlot* lgi_slot_get(LogQueue* q, size_t idx)
 {
-  return (LogSlot*)(q->slots + (idx & q->mask) * q->stride);
-}
-
-// Extract payload from that slot
-LOGGER_INTERNAL inline LogPayload* lgi_slot_payload(LogSlot* s)
-{
-  return (LogPayload*)((uint8_t*)s + sizeof(LogSlot));
+  return (LogSlot*)(q->slots + (idx & LOGGER_RING_MASK) * LOGGER_RING_STRIDE);
 }
 
 // Manual writes for lg_get_time_str
-LOGGER_INTERNAL inline void lgi_write2(char* p, int v)
+LOGGER_INTERNAL inline void lgi_time_write2(char* p, int v)
 {
   p[0] = (char)('0' + v / 10);
   p[1] = (char)('0' + v % 10);
 }
 
-LOGGER_INTERNAL inline void lgi_write4(char* p, int v)
+LOGGER_INTERNAL inline void lgi_time_write4(char* p, int v)
 {
-  lgi_write2(p, v / 100);
-  lgi_write2(p + 2, v % 100);
+  lgi_time_write2(p, v / 100);
+  lgi_time_write2(p + 2, v % 100);
 }
 
-LOGGER_INTERNAL inline void lgi_write3(char* p, int v)
+LOGGER_INTERNAL inline void lgi_time_write3(char* p, int v)
 {
   p[0] = (char)('0' + v / 100);
   p[1] = (char)('0' + (v / 10) % 10);
   p[2] = (char)('0' + v % 10);
 }
 
+// Manual appending, used at default format_msg
+LOGGER_INTERNAL inline void lgi_str_append_n(char** p, char* end, const char* s)
+{
+  while (*s && *p < end) *(*p)++ = *s++;
+}
+
+// Guarantees \n and \0 at the end
+LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
+  if (*p < end) *(*p)++ = '\n';
+  **p = '\0';
+}
+
 // Some other macro-utilities
 #define LG_UNUSED(x) (void)(x)
 #define LG_STRINGIFY(x) #x
-#define LG_TOSTRING(x) LG_STRINGIFY(x)
 // Fuck you MSVC with C++
 #ifdef __cplusplus
   #define LG_STRUCT(T, ...) (T{__VA_ARGS__})
@@ -591,7 +597,7 @@ LOGGER_INTERNAL inline void lgi_write3(char* p, int v)
 
 // Sleep() has terrible resolution (milliseconds)
 // But who uses winbloat for production-ready logger?
-#define LOGGER_SLEEP(ns) do { Sleep(1); } while (0)
+#define LOGGER_SLEEP(us) do { Sleep(1); } while (0)
 
 // threads transpilation for windows to posix
 typedef HANDLE pthread_t;
@@ -648,23 +654,14 @@ static int pthread_create(pthread_t* t, void* attr,
 #include <dirent.h>
 #include <unistd.h>
 
-// sleep for ns nanoseconds
-#define LOGGER_SLEEP(ns)                                            \
-  do {                                                              \
-    struct timespec ts = {(ns) / 1000000000L, (ns) % 1000000000L};  \
-    nanosleep(&ts, NULL);                                           \
+// sleep for us microseconds
+#define LOGGER_SLEEP(us)                                                \
+  do {                                                                  \
+    struct timespec ts = {(us) / 1000000L, ((us) % 1000000L) * 1000L};  \
+    nanosleep(&ts, NULL);                                               \
   } while (0)
 #define LOGGER_MKDIR(path) mkdir(path, 0755)
 #define LOGGER_PATH_SEP '/'
-#endif
-
-// Aligned alloc
-#if defined(_MSC_VER) || defined(__MINGW32__)
-  #define ALIGNED_ALLOC(align, size) _aligned_malloc(size, align)
-  #define ALIGNED_FREE(ptr)          _aligned_free(ptr)
-#else
-  #define ALIGNED_ALLOC(align, size) aligned_alloc(align, size)
-  #define ALIGNED_FREE(ptr)          free(ptr)
 #endif
 
 // Pause instruction
@@ -703,7 +700,7 @@ struct Logger {
   log_formatter_t customLogFunc;
   uint32_t out_needed; // needed file flags for formatter
   pthread_t writer_th;
-  LogQueue* queue;
+  LOGGER_ALIGN LogQueue queue;
 };
 
 // consumer func, writes entries on the ring to stdout or file
@@ -727,7 +724,7 @@ LOGGER_INTERNAL void* lgi_consumer(void* arg) {
 }
 
 // active logger instance if NULL, init tries to set it
-LOGGER_INTERNAL Logger* active_instance = NULL;
+LOGGER_INTERNAL ATOMIC(Logger*) active_instance = NULL;
 
 int lg_init_flat(Logger* inst, const char* logs_dir,
                 int local_time, int max_log_files, int generateDefaultFile,
@@ -754,7 +751,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
 {
   if (!inst || !logs_dir) return false;
   if (config.sinks.count > LOGGER_MAX_SINKS) {
-    LG_DEBUG_ERR("Max amount of file sinks can be " LG_TOSTRING(LOGGER_MAX_SINKS));
+    LG_DEBUG_ERR("Max amount of file sinks can be " LG_STRINGIFY(LOGGER_MAX_SINKS));
     return false;
   }
 
@@ -821,12 +818,7 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
     }
   } else logFile = NULL;
 
-  inst->queue = lgi_queue_create(LOGGER_RING_SIZE);
-  if (!inst->queue) {
-    if (logFile) fclose(logFile);
-    LG_DEBUG_ERR("LogQueue cannot be created!");
-    return false;
-  }
+  lgi_queue_create(&inst->queue);
 
   // Copy user sinks to instance and push default file
   size_t cnt = config.sinks.count;
@@ -846,13 +838,16 @@ int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
   // create writer thread
   if (pthread_create(&inst->writer_th, NULL, lgi_consumer, (void*)inst) != 0) {
     if (logFile) fclose(logFile);
-    free(inst->queue);
     atomic_store_explicit(&inst->isAlive, false, memory_order_release);
     LG_DEBUG_ERR("Cannot create writer process thread!");
     return false;
   }
 
-  if (active_instance == NULL) active_instance = inst;
+  Logger* expected = NULL;
+  atomic_compare_exchange_strong_explicit(
+    &active_instance, &expected, inst,
+    memory_order_release, memory_order_relaxed
+  );
   return true;
 }
 
@@ -883,8 +878,9 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
   if (!msg || msglen >= LOGGER_MAX_MSG_SIZE) return false;
 
   if (!inst) {
-    if (active_instance)
-      inst = active_instance;
+    Logger* active = lg_get_active_instance();
+    if (active)
+      inst = active;
     else {
       LG_DEBUG_ERR("There is no active instance!");
       return false;
@@ -897,7 +893,7 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
     return false;
   }
 
-  LogQueue *q = inst->queue;
+  LogQueue *q = &inst->queue;
   size_t pos = atomic_load_explicit(&q->head, memory_order_relaxed);
   size_t seq;
   LogSlot* s;
@@ -934,7 +930,7 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
   }
 
   // Copy the data to payload
-  LogPayload *pyld = lgi_slot_payload(s);
+  LogPayload *pyld = &s->payload;
   memcpy(pyld->msg, msg, msglen + 1);
   pyld->length = msglen;
   pyld->level = level;
@@ -947,26 +943,27 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
 int lg_set_active_instance(Logger* inst)
 {
   if (!inst) return false;
-  active_instance = inst;
+  atomic_store_explicit(&active_instance, inst, memory_order_release);
   return 1;
 }
 
 Logger* lg_get_active_instance()
 {
-  return active_instance;
+  return atomic_load_explicit(&active_instance, memory_order_acquire);
 }
 
 int lg_destroy(Logger* inst)
 {
   if (!inst) {
-    if (active_instance)
-      inst = active_instance;
+    Logger* active = lg_get_active_instance();
+    if (active)
+      inst = active;
     else
       return false;
   }
 
   // if it is not alive, do not try to destruct
-  if (!inst->isAlive) {
+  if (!lg_is_alive(inst)) {
     LG_DEBUG_ERR("Logger is already dead!");
     return false;
   }
@@ -992,8 +989,8 @@ int lg_destroy(Logger* inst)
 int lg_is_alive(const Logger* inst)
 {
   const Logger* ins = inst ? inst : lg_get_active_instance();
-  if (!ins) return 0;
-  return atomic_load_explicit(&ins->isAlive, memory_order_relaxed);
+  if (!ins) return false;
+  return atomic_load_explicit(&ins->isAlive, memory_order_acquire);
 }
 
 Logger* lg_alloc()
@@ -1008,7 +1005,6 @@ Logger* lg_alloc()
 
 void lg_free(Logger* inst)
 {
-  ALIGNED_FREE(inst->queue);
   free(inst);
 }
 
@@ -1016,7 +1012,7 @@ void lg_free(Logger* inst)
 int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg)
 {
   if (!msg) return false;
-  if (!inst) return lg_log_(active_instance, level, msg, strlen(msg));
+  if (!inst) return lg_log_(lg_get_active_instance(), level, msg, strlen(msg));
   return lg_log_(inst, level, msg, strlen(msg));
 }
 int lg_finfoi(Logger* inst, const char* msg)
@@ -1133,19 +1129,19 @@ int lg_get_time_str(char* buf, int isLocalTime)
 #endif  // _WIN32
 
   // Manual writing
-  lgi_write4(buf, year);
+  lgi_time_write4(buf, year);
   buf[4]  = '.';
-  lgi_write2(buf+5, month);
+  lgi_time_write2(buf+5, month);
   buf[7]  = '.';
-  lgi_write2(buf+8, day);
+  lgi_time_write2(buf+8, day);
   buf[10] = '-';
-  lgi_write2(buf+11, hours);
+  lgi_time_write2(buf+11, hours);
   buf[13] = '.';
-  lgi_write2(buf+14, minutes);
+  lgi_time_write2(buf+14, minutes);
   buf[16] = '.';
-  lgi_write2(buf+17, seconds);
+  lgi_time_write2(buf+17, seconds);
   buf[19] = '.';
-  lgi_write3(buf+20, millis);
+  lgi_time_write3(buf+20, millis);
   buf[23] = '\0';
   return true;
 }
@@ -1311,108 +1307,99 @@ LOGGER_INTERNAL bool lgi_process_payload(Logger* inst, LogPayload* payload) {
     return false;
   }
 
-  // Fwrite to all not-null files
+  // Use raw write syscalls
   for (size_t i = 0; i < inst->sinks_count; i++) {
     LgSink* s = &inst->sinks[i];
     if (!s->file) continue;
     LgString* str = &pack[s->type];
-    fwrite(str->data, 1, str->len, s->file);
+    fwrite(str->data, sizeof(*str->data), str->len, s->file);
   }
   return true;
 }
 
-// message formatter helper - used at consumer
 LOGGER_INTERNAL int lgi_def_format_msg(
-  const char* time_str,
-  LgLogLevel level,
-  const char* msg,
-  uint32_t needed,
-  LgMsgPack pack
-) {
-  LgString* tty_str  = &pack[LG_OUT_TTY];
-  LgString* file_str = &pack[LG_OUT_FILE];
-  LgString* net_str = &pack[LG_OUT_NET];
+  const char* time_str, LgLogLevel level,
+  const char* msg, uint32_t needed, LgMsgPack pack)
+{
   const char* level_str = lg_lvl_to_str(level);
 
-  // preparing stdout msg
+  // Colorized TTY formatting (you can disable)
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
-#ifdef LOGGER_DONT_COLORIZE
-    lg_str_format_into(
-      tty_str,
-      "%s [%s] %s\n"
-      time_str, clr, level_str, msg
-    );
-#else
+    LgString* s = &pack[LG_OUT_TTY];
+    char* p = s->data;
+    char* end = p + sizeof(s->data) - 1;
+#ifndef LOGGER_DONT_COLORIZE
     const char* clr;
     switch (level) {
-    case LG_ERROR:
-      clr = LOGGER_CLR_RED;
-      break;
-    case LG_INFO:
-      clr = LOGGER_CLR_GREEN;
-      break;
-    case LG_WARNING:
-      clr = LOGGER_CLR_YELLOW;
-      break;
-    default:
-      clr = LOGGER_CLR_RST;
-      break;
+      case LG_ERROR:   clr = LOGGER_CLR_RED;    break;
+      case LG_INFO:    clr = LOGGER_CLR_GREEN;   break;
+      case LG_WARNING: clr = LOGGER_CLR_YELLOW;  break;
+      default:         clr = LOGGER_CLR_RST;     break;
     }
-    lg_str_format_into(
-      tty_str,
-      LOGGER_CLR_AQUA "%s %s[%s]" LOGGER_CLR_RST " %s\n",
-      time_str, clr, level_str, msg
-    );
+    lgi_str_append_n(&p, end, LOGGER_CLR_AQUA);
+    lgi_str_append_n(&p, end, time_str);
+    lgi_str_append_n(&p, end, " ");
+    lgi_str_append_n(&p, end, clr);
+    lgi_str_append_n(&p, end, "[");
+    lgi_str_append_n(&p, end, level_str);
+    lgi_str_append_n(&p, end, "]");
+    lgi_str_append_n(&p, end, LOGGER_CLR_RST);
+    lgi_str_append_n(&p, end, " ");
+#else
+    lgi_str_append_n(&p, end, time_str);
+    lgi_str_append_n(&p, end, " [");
+    lgi_str_append_n(&p, end, level_str);
+    lgi_str_append_n(&p, end, "] ");
 #endif
+    lgi_str_append_n(&p, end, msg);
+    lgi_str_close(&p, end);
+    s->len = (size_t)(p - s->data);
   }
 
-  // preparing file msg
+  // Raw message and other specifiers, no color or markup language
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE)) {
-    // no escape chars in file
-    lg_str_format_into(
-      file_str,
-      "%s [%s] %s\n",
-      time_str, level_str, msg
-    );
+    LgString* s = &pack[LG_OUT_FILE];
+    char* p = s->data;
+    char* end = p + sizeof(s->data) - 1;
+    lgi_str_append_n(&p, end, time_str);
+    lgi_str_append_n(&p, end, " [");
+    lgi_str_append_n(&p, end, level_str);
+    lgi_str_append_n(&p, end, "] ");
+    lgi_str_append_n(&p, end, msg);
+    lgi_str_close(&p, end);
+    s->len = (size_t)(p - s->data);
   }
 
-  // preparing network msg (JSON)
+  // JSON style formatting
   if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_NET)) {
-    lg_str_format_into(
-      net_str,
-      "{\"timestamp\":\"%s\",\"level\":\"%s\",\"message\":\"%s\"}\n",
-      time_str, level_str, msg
-    );
+    LgString* s = &pack[LG_OUT_NET];
+    char* p = s->data;
+    char* end = p + sizeof(s->data) - 1;
+    lgi_str_append_n(&p, end, "{\"timestamp\":\"");
+    lgi_str_append_n(&p, end, time_str);
+    lgi_str_append_n(&p, end, "\",\"level\":\"");
+    lgi_str_append_n(&p, end, level_str);
+    lgi_str_append_n(&p, end, "\",\"message\":\"");
+    lgi_str_append_n(&p, end, msg);
+    lgi_str_append_n(&p, end, "\"}");
+    lgi_str_close(&p, end);
+    s->len = (size_t)(p - s->data);
   }
   return true;
 }
 
-LOGGER_INTERNAL LogQueue* lgi_queue_create(size_t capacity) {
-  if ((capacity & (capacity - 1)) != 0) return NULL; // power of 2 check
-
-  size_t stride = (sizeof(LogSlot) + sizeof(LogPayload) + LOGGER_CACHE_LINE - 1)
-                  & ~(size_t)(LOGGER_CACHE_LINE - 1);
-  size_t total  = sizeof(LogQueue) + capacity * stride;
-
-  // TODO: Make this stack-allocated and fixed-size
-  LogQueue* q = (LogQueue*)ALIGNED_ALLOC(LOGGER_CACHE_LINE, total);
-  if (!q) return NULL;
-
+LOGGER_INTERNAL void lgi_queue_create(LogQueue* q) {
   // Set the fields
-  q->capacity = capacity;
-  q->mask     = capacity - 1;
-  q->stride   = stride;
-  q->tail     = 0;
+  q->tail = 0;
   atomic_store_explicit(&q->head, 0, memory_order_relaxed);
 
   // Initialize every slot's seq by index
-  for (size_t i = 0; i < capacity; i++) {
-    LogSlot* s = (LogSlot*)(q->slots + i * stride);
+  for (size_t i = 0; i < LOGGER_RING_SIZE; i++) {
+    LogSlot* s = (LogSlot*)(q->slots + i * LOGGER_RING_STRIDE);
     atomic_store_explicit(&s->seq, i, memory_order_relaxed);
   }
 
   atomic_thread_fence(memory_order_seq_cst); // init barrier
-  return q;
 }
 
 /*
@@ -1429,7 +1416,7 @@ LOGGER_INTERNAL bool lgi_queue_pop(LogQueue* q, LogPayload** out, size_t* out_po
     return false; // not ready yet
   }
 
-  *out = lgi_slot_payload(s);
+  *out = &s->payload;
   *out_pos = pos;
 
   q->tail = pos + 1;
@@ -1438,18 +1425,17 @@ LOGGER_INTERNAL bool lgi_queue_pop(LogQueue* q, LogPayload** out, size_t* out_po
 
 LOGGER_INTERNAL void lgi_queue_release(LogQueue* q, size_t pos) {
   LogSlot* s = lgi_slot_get(q, pos);
-  atomic_store_explicit(&s->seq, pos + q->capacity, memory_order_release);
+  atomic_store_explicit(&s->seq, pos + LOGGER_RING_SIZE, memory_order_release);
 }
 
 LOGGER_INTERNAL inline bool lgi_queue_ppr(Logger* inst, LogPayload** entry, size_t* pos) {
-  if (!lgi_queue_pop(inst->queue, entry, pos)) return false;
+  if (!lgi_queue_pop(&inst->queue, entry, pos)) return false;
   lgi_process_payload(inst, *entry);
-  lgi_queue_release(inst->queue, *pos);
+  lgi_queue_release(&inst->queue, *pos);
   return true;
 }
 
 LOGGER_INTERNAL void lgi_adaptive_wait(int* spins) {
-  if (!spins) return;
   if (*spins < LOGGER_WAIT_NO_PAUSE_MAGIC) {
     *spins += 1;
     // no pause
@@ -1457,7 +1443,9 @@ LOGGER_INTERNAL void lgi_adaptive_wait(int* spins) {
     *spins += 1;
     LOGGER_PAUSE_INS();
   } else {
-    LOGGER_SLEEP(1);
+    // Kernel'll floor this value to ~70-80 us
+    // so this constant doesnt matter if it's in between 50-100 us.
+    LOGGER_SLEEP(60);
   }
 }
 

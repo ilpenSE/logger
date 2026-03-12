@@ -17,11 +17,11 @@ rm -rf usages/deprecated
 
 # C
 cd $proot/usages/c
-rm -rf logs app app.exe *.log
+rm -rf build logs app app.exe *.log
 
 # C++
 cd $proot/usages/c++
-rm -rf logs app app.exe time.txt test.py *.log
+rm -rf logs build app app.exe time.txt test.py *.log
 
 # Python
 cd $proot/usages/python

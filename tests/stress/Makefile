@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -I../../ -ggdb
+CFLAGS := -Wall -Wextra -O2 -I../../ -ggdb
 
 TARGET := app
 SRC := stress.c

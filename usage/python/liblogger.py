@@ -27,7 +27,7 @@
   Import this in your python project
 """
 
-__all__ = ["Logger", "LogOutType", "LogPolicy", "LogLevel", "LogSink", "LogSinks"]
+__all__ = ["Logger", "LogOutType", "LogPolicy", "LogLevel"]
 
 from cffi import FFI
 from enum import IntEnum
@@ -57,7 +57,7 @@ typedef enum {
 } LgOutType;
 
 #define LOGGER_MAX_OUT_TYPES 3
-#define LOGGER_MAX_MSG_SIZE 1024
+#define LOGGER_MAX_MSG_SIZE 256
 #define LOGGER_MAX_SINKS 8
 
 typedef struct Logger Logger;
