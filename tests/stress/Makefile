@@ -1,8 +1,8 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -I../..
+CC := gcc
+CFLAGS := -Wall -Wextra -O2 -I../../ -ggdb
 
-TARGET = app
-SRC = test.c main.c
+TARGET := app
+SRC := stress.c
 
 all: $(TARGET)
 

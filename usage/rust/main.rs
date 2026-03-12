@@ -19,37 +19,13 @@ unsafe fn cstr_to_string(cstr: *const c_char) -> String {
   unsafe { CStr::from_ptr(cstr).to_string_lossy().into_owned() }
 }
 
-unsafe extern "C" fn myFormatter(
-  local_time: c_int,
-  level: LgLogLevel,
-  msg: *const c_char,
-  pack: *mut LgMsgPack
-) -> c_int {
-  unsafe {
-    let mut time_str = [0i8; 24];
-    if lg_get_time_str(time_str.as_mut_ptr(), local_time) != 1 {
-      return 0;
-    }
-
-    let formatted = CString::new(format!(
-      "{} {}: {}\n",
-      cstr_to_string(time_str.as_ptr()),
-      cstr_to_string(lg_lvl_to_str(level)),
-      cstr_to_string(msg),
-    )).unwrap();
-
-    let file_str = (*pack).file_str;
-    if file_str.data != null_mut() {
-      lg_str_write_into(&mut (*pack).file_str, formatted.as_ptr());
-    }
-
-    let stdout_str = (*pack).stdout_str;
-    if stdout_str.data != null_mut() {
-      lg_str_write_into(&mut (*pack).stdout_str, formatted.as_ptr());
-    }
-    return 1;
+lg_formatter!(myFormatter, |time_str, level, msg, out_type| {
+  if out_type == LgOutType::TTY {
+    format!("\x1b[36m{}\x1b[0m [{}] {}", time_str, level, msg)
+  } else {
+    format!("{} [{}] {}", time_str, level, msg)
   }
-}
+});
 
 macro_rules! cstr {
   ($s:expr) => {
@@ -62,12 +38,16 @@ fn main() {
     let logs_dir = CString::new("logs").unwrap();
     let formatter: LogFormatterT = myFormatter;
 
-    let config = LoggerConfig {
+    let mut config = LoggerConfig {
       local_time: 1,
-      print_stdout: 1,
+      max_files: 0,
+      generate_default_file: 1,
       log_policy: LgLogPolicy::Drop,
-      log_formatter: Some(formatter), // FUCK ALL RUST DEVELOPERS AND GOONERS
+      sinks: LgSinks::default(),
+      log_formatter: None, //Some(formatter), // FUCK ALL RUST DEVELOPERS AND GOONERS
     };
+    lg_append_sink(&mut config, lg_get_stdout(), LgOutType::TTY);
+    lg_append_sink(&mut config, lg_fopen(cstr!("some.log")), LgOutType::Net);
 
     let lg = lg_alloc();
     let ires = lg_init(lg, logs_dir.as_ptr(), config);

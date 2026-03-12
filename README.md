@@ -2,14 +2,14 @@
 
 - ![Language](https://img.shields.io/badge/language-C-blue)
 ![Language](https://img.shields.io/badge/safe%20in-C++-blue)
-- ![Platform](https://img.shields.io/badge/platform-all-brightgreen)
+- ![Platform](https://img.shields.io/badge/platform-posix%20windows%20apple-brightgreen)
 - ![Asynchronous](https://img.shields.io/badge/asynchronous-purple?style=for-the-badge)
 ![Thread Safe](https://img.shields.io/badge/thread%20safe-brightgreen?style=for-the-badge)
 ![Flexible](https://img.shields.io/badge/flexible-blue?style=for-the-badge)
 ![STB-Style](https://img.shields.io/badge/stb-single%20header-yellow?style=for-the-badge)
 
-- This Logger supports apple systems, windows and unix or unix-like systems.
-- It requires minimum C99 version of C.
+- This Logger supports apple silicon, windows and unix or unix-like systems.
+- It requires minimum C11 version of C.
 - You can build and generate `.so`, `.dll` and `.dylib` on your machine.
 
 - It does only have header files with implementation,
@@ -22,6 +22,7 @@ You can compile this single header and turn it into shared object file.
 
 - [Pure C STB-Style Header](./logger.h)
 - [C++ Stream (<<) support](./loggerstream.hpp)
+- [1M Logs Test](tests/stress)
 - [Usage in C](usage/c)
 - [Usage in C++](usage/c++)
 - [Usage in Python](usage/python)
@@ -39,9 +40,10 @@ You can compile this single header and turn it into shared object file.
 int main() {
   Logger* lg = lg_alloc();
   LoggerConfig config = {
-    .localTime = true, .printStdout = true,
-    .policy = LG_DROP, .logFormatter = NULL
+    .localTime = true, .generateDefaultFile = true,
+    .policy = LG_DROP
   };
+  lg_append_sink(&config, stdout, LG_OUT_TTY);
   lg_init(lg, "logs", config);
 
   lg_info("Hello, World!");
@@ -66,13 +68,13 @@ make debug=1
 ```
 if you wanna have debug information
 
-For MSVC and WINDOWS:
+For MSVC and WINDOWS with nmake:
 ```bash
-build.bat
+nmake /f Makefile.win
 ```
 or
 ```bash
-build.bat debug
+nmake /f Makefile.win debug=1
 ```
 for debug information
 
@@ -81,23 +83,30 @@ for debug information
 
 `int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);`
 
+- Initializer with default configs:
+
+`int lg_init_defaults(Logger* instance, const char* logs_dir);`
+
 - The LoggerConfig struct:
 ```c
 typedef struct {
   int localTime;
-  int printStdout;
-  lg_log_policy policy;
+  int maxFiles;
+  int generateDefaultFile;
+  LgSinks sinks;
+  LgLogPolicy logPolicy;
   log_formatter_t logFormatter;
 } LoggerConfig;
 ```
 
 - Flatted version of LoggerConfig
-- It's for languages that doesnt support C structs (e.g: Bun FFI in JavaScript)
+- It's for languages that doesnt support C structs
 
 ```c
 int lg_init_flat(Logger* inst, const char* logs_dir,
-                  int local_time, int print_stdout,
-                  lg_log_policy policy, log_formatter_t log_formatter);
+                   int local_time, int max_log_files, int generateDefaultFile,
+                   LgSinks sinks, LgLogPolicy log_policy,
+                   log_formatter_t log_formatter);
 ```
 
 - Main destroyer function that destroys logger instances (DOES NOT MANAGE MEMORY!)
@@ -108,18 +117,18 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 
 `int lg_is_alive(const Logger* instance);`
 
-- Main producer function that puts message, time string and level into the ring
+- Main producer function that pushes message, level and message length into the queue
 - (NOT RECOMMENDED TO USE DIRECTLY, USE MACROS OR F-FUNCTIONS)
 
-`int lg_producer(Logger* inst, const lg_log_level level, const char* msg);`
+`int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen);`
 
 - Wrapper for producer, takes variadics and processes it, used at macros
 
-`int lg_vproducer(Logger* inst, const lg_log_level level, const char* fmt, ...);`
+`int lg_vlog_(Logger* inst, const LgLogLevel level, const char* fmt, ...);`
 
 - Functions that are used at FFIs (F-functions), the level-less and level-aware functions here:
 
-`int lg_flog(const lg_log_level level, const char* msg);`
+`int lg_flog(const LgLogLevel level, const char* msg);`
 
 `int lg_finfo(const char* msg);`
 
@@ -130,7 +139,7 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 - F-functions with explicit instance, you can put NULL there if you wanna use active instance
 - (thats how functions above works)
 
-`int lg_flogi(Logger* inst, const lg_log_level level, const char* msg);`
+`int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg);`
 
 `int lg_finfoi(Logger* inst, const char* msg);`
 
@@ -148,7 +157,7 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 ## Helper functions that you can use:
 - Converts level enum to string
 
-`const char* lg_lvl_to_str(const lg_log_level level);`
+`const char* lg_lvl_to_str(const LgLogLevel level);`
 
 - Gets the time string format which is used at logs and log file names
 
@@ -160,6 +169,35 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 
 `void lg_str_write_into(lg_string* s, const char* already_formatted_str);`
 
+- Returns you the default config struct, `lg_init_defaults` depends on this
+
+`LoggerConfig lg_get_defaults();`
+
+- Appends a sink to the config
+
+`int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);`
+
+- These functions returns file pointers directly. Use them in FFIs.
+And, DO NOT use **garbage**-collected languages' files because
+their GC will close it anytime but destroy function also closes it.
+This leads to double free.
+
+In ONLY C/C++, you can use stdout/stderr directly.
+
+Return stdout:
+
+`FILE* lg_get_stdout();`
+
+Return stderr:
+
+`FILE* lg_get_stderr();`
+
+Open a file with wb mode:
+
+`FILE* lg_fopen(const char* path);`
+
+(wb is mandatory because payload processor calls fwrite)
+
 - Allocator and freer for heap allocated instances or foreign languages
 
 `Logger* lg_alloc();`
@@ -169,16 +207,56 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 # Explanation of this logger library (how it works):
 
 - In this asynchronous logger, we have main and writer thread.
-- Main thread manages lifetime and putting logs into ring buffer.
-- Writer thread writes messages that in the ring buffer to log file
-and stdout if you provided.
+- Main thread (Producer) manages lifetime and pushes logs into ring buffer.
+- Writer (Consumer) thread writes messages that in the ring buffer to file sinks.
 - Sometimes, your log messages may disappear if you stress-test it.
-That's because the ring buffer is a **fixed-size** buffer and it is full.
+That's because the ring buffer is a **fixed-size** buffer and it can be full.
 I have decided the **DROP THE LOG** policy by default at those situations
 but you can change it in config. To see in where it dropped, you can define
 `LOGGER_DEBUG` in your compilation (with `-DLOGGER_DEBUG`) or runtime (`#define LOGGER_DEBUG`)
-- The config printStdout significantly slows down writer thread.
-If you're using this at prod, dont forget to make `printStdout` false
+
+## Lock-Free MPSC (Multiple-Producer, Single-Consumer) Ring Buffer (since v4.0)
+
+- This logger doesn't include or use ANY KIND OF MUTEX. It just uses atomics
+- The threads won't block each other and cause any mutex contention.
+- But the trade-off is that this library doesn't work in C99, requires min. C11 and C++17 (because of inline)
+- LogQueue is MPSC ring buffer and has atomic head variable.
+This is atomic because both of the sides reads/writes it.
+- To avoid false sharing we aligned head and tail and ensured that these two going into different cachelines.
+- I also aligned isAlive to avoid false sharing also.
+- But I don't check cache ping-pong. (v4.0-rc1)
+- Why PPR (pop-process-payload) function (`lgi_ppr`) exists because pop does not release that slot
+Releasing that slot marks that slot empty and can be overwritable. (Not length == 0 check anymore)
+- In block policy, producer will adaptively waits until there's empty space in ring buffer.
+- In drop policy, producer tries to fires a log but if ring is full, it'll drop it.
+- Adaptive waiting is first, it spins then it spins with pause instruction finally it will sleep for 1 nanosecond
+- The 3rd stage loops until there's enough space in ring buffer (we have constants that determines the threshold)
+- Go check them: `LOGGER_WAIT_NO_PAUSE_MAGIC = 100` and `LOGGER_WAIT_PAUSE_MAGIC = 1000`
+- First threshold determines the spin duration, second one does spin with pause duration
+
+### The Interesting Situation
+
+I was just stress-testing the logger with 1M logs in a row.
+I appended stderr sink and measure the elapsed time, time per log and dropped log count.
+Time per log call estimately is 35 nanoseconds. And I remove the stderr sink thinking that
+it will highly increases the speed but it didn't (it's ~55 ns). Instead, it ran slower than before.
+I thought this and I describe it like this:
+
+If you provide stderr sink, consumer thread will significantly slows down. (like 2 times slower)
+And, our lock-free approach seems like threads won't block each other. Yes, it doesn't but
+consumer thread and producer threads depend on each other because of the MPSC fixed-size
+ring buffer. If consumer is so slow and producer keeps pushing, ring buffer is mostly full and
+this causes early-return in producer and creates a fake speed perception.
+I checked dropped log count and it's like +800K in drop with stderr situation. This proofs my thought.
+
+## Sinks (since 4.0)
+
+- In initialization of logger, it accepts max 8 file sink.
+- These sinks can have output type (LgOutType) describing that what kind of messages it accepts.
+- Formatter also prepares message pack for all kinds of out types.
+- In FFI, you have to use library to get stdout/stderr and open a file (in wb mode that logger expects).
+- And, DO NOT use language's default file opener or stdout/stderr. If you're NOT using C/C++.
+- Instance has extra space for default file this prevents out-of-bounds and simplifies the whole process.
 
 ## Multiple Instances (since v3.0)
 
@@ -189,12 +267,7 @@ If you're using this at prod, dont forget to make `printStdout` false
 - You can make `lg_destroy` parameter NULL and it tries to destroy the active instance like you dont have to do `lg_destroy(lg_get_active_instance())`
 
 ```c
-LoggerConfig cfg = (LoggerConfig) {
-  .localTime=1,
-  .printStdout=1,
-  .policy=LG_DROP,
-  .logFormatter=NULL
-};
+LoggerConfig cfg = lg_get_defaults();
 Logger* lg1 = lg_alloc();
 Logger* lg2 = lg_alloc();
 
@@ -219,38 +292,45 @@ lg_finfo("Hello from function"); // normal functions, used at FFIs
 - You can customize log message. The customization limited by just layout.
 You can change time string, level and formatted message layout.
 - Default Layout: `time_str [level] msg`
-- You can have your custom time string format (dont worry about size of the time_str buffer)
-- Define `LOGGER_DONT_COLORIZE` if you dont want colorized stdout
+- Define `LOGGER_DONT_COLORIZE` if you dont want colorized stdout (in default formatter)
 - Note that time_str is evaluated at consumer (writer) thread. It may not show correct time when you call producer.
-- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1125)) and assign it in logger config. Don't forget newline char.
+- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1329)) and assign it in logger config. Don't forget newline char.
+- Python and Rust has transpiler for you to get better developer experience.
 
 Latest usage in C:
 ```c
-int myFormatter(const int local_time, const lg_log_level level,
-                   const char* msg, lg_msg_pack* pack) {
-    char time_str[24];
-    if (!lg_get_time_str(time_str, local_time)) return 0;
-    const char* lvl = lg_lvl_to_str(level);
+int myFormatter(const char* time_str, LgLogLevel level,
+                const char* msg, uint32_t needed, LgMsgPack pack) {
+  LgString* tty_str  = &pack[LG_OUT_TTY];
+  LgString* file_str = &pack[LG_OUT_FILE];
+  LgString* net_str = &pack[LG_OUT_NET];
+  const char* level_str = lg_lvl_to_str(level);
 
-    if (pack->stdout_str.data) {
-        lg_str_format_into(&pack->stdout_str, "%s %s: %s\n", time_str, lvl, msg);
-    }
+  // equivalent to: needed & (1u << LG_OUT_TTY)
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)) {
+    lg_str_format_into(tty_str, "%s/%s: %s\n", time_str, level_str, msg);
+  }
+  
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE)) {
+    lg_str_format_into(file_str, "%s/%s: %s\n", time_str, level_str, msg);
+  }
 
-    if (pack->file_str.data) {
-        lg_str_format_into(&pack->file_str, "%s %s: %s\n", time_str, lvl, msg);
-    }
+  if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_NET)) {
+    lg_str_format_into(net_str,
+                       "{timestamp:%s, level:%s, msg:%s}\n",
+                       time_str, level_str, msg);
+  }
+  return true;
 }
 
 Logger* lg = lg_alloc();
-LoggerConfig conf = {
-  .localTime = 1, .printStdout = 1,
-  .policy = LG_DROP, .logFormatter = myFormatter
-};
+LoggerConfig conf = lg_get_defaults();
+conf.logFormatter = myFormatter;
 lg_init(lg, "logs", conf);
 ```
 
 - And you can always add new level and new logger stream instance!
-- All you have to do is define macros [like this](logger.h#L307)
+- All you have to do is define macros [like this](logger.h#L408)
 - And define stream macro [like this](loggerstream.hpp#L75)
 - That's it, you can use your custom level
 

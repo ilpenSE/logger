@@ -1,10 +1,13 @@
 # This makefile only works on UNIX/Linux
 CC = gcc
-CFLAGS = -std=c99 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra -shared
+CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
 
-BUILD_FOLDER = build
+BUILD = build
 HEADER = logger.h
-SHARED_OBJECT ?= $(BUILD_FOLDER)/liblogger.so
+OBJECT = $(BUILD)/logger.o
+DYNAMIC_LIB ?= $(BUILD)/liblogger.so
+STATIC_LIB ?= $(BUILD)/liblogger.a
+
 debug ?= 0
 
 ifeq ($(debug),1)
@@ -13,15 +16,20 @@ else
 	CFLAGS += -O2
 endif
 
-all: $(SHARED_OBJECT)
+all: $(DYNAMIC_LIB) $(STATIC_LIB)
 
 # Build folder directory making
-$(BUILD_FOLDER):
-	mkdir -p $(BUILD_FOLDER)
+$(BUILD):
+	mkdir -p $(BUILD)
 
-# Generating shared object
-$(SHARED_OBJECT): $(HEADER) | $(BUILD_FOLDER)
-	$(CC) $(CFLAGS) -o $(SHARED_OBJECT) $(HEADER)
+$(OBJECT): $(HEADER) | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $(OBJECT)
+
+$(DYNAMIC_LIB): $(OBJECT) | $(BUILD)
+	$(CC) -shared -o $@ $<
+
+$(STATIC_LIB): $(OBJECT) | $(BUILD)
+	ar rcs $@ $(OBJECT)
 
 clean:
-	rm -rf $(BUILD_FOLDER)
+	rm -rf $(BUILD)

@@ -17,19 +17,19 @@ rm -rf usages/deprecated
 
 # C
 cd $proot/usages/c
-rm -rf logs app app.exe
+rm -rf build logs app app.exe *.log
 
 # C++
 cd $proot/usages/c++
-rm -rf logs app app.exe time.txt test.py
+rm -rf logs build app app.exe time.txt test.py *.log
 
 # Python
 cd $proot/usages/python
-rm -rf logs __pycache__
+rm -rf logs __pycache__ *.log
 
 # Rust
 cd $proot/usages/rust
-rm -rf logs Cargo.lock target tests
+rm -rf logs Cargo.lock target tests *.log
 
 # Generate zips
 cd $proot/usages

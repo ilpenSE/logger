@@ -1,0 +1,27 @@
+CC=cl
+CFLAGS=/std:c11 /experimental:c11atomics /W4 /Fo:build\ /DLOGGER_IMPLEMENTATION /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT
+
+BUILD = build
+HEADER = logger.h
+DLL = $(BUILD)/logger.dll
+
+!IF "$(debug)"=="1"
+CFLAGS=$(CFLAGS) /DLOGGER_DEBUG /Zi /Od /LDd /MDd
+!ELSE
+CFLAGS=$(CFLAGS) /O2 /MD /LD
+!ENDIF
+
+all: $(DLL)
+
+# Build folder directory making
+$(BUILD):
+	if not exist $(BUILD) mkdir $(BUILD)
+
+# Generating dll
+$(DLL): $(HEADER) $(BUILD)
+	$(CC) $(CFLAGS) /Fe:$(DLL) /TC $(HEADER)
+
+clean:
+	rmdir /S /Q $(BUILD)
+
+.PHONY: all clean
