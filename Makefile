@@ -1,5 +1,5 @@
 # This makefile only works on UNIX/Linux
-CC = gcc
+CC ?= gcc
 CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
 
 BUILD = build
@@ -10,6 +10,10 @@ DYNAMIC_LIB ?= $(BUILD)/liblogger.so
 STATIC_LIB ?= $(BUILD)/liblogger.a
 
 debug ?= 0
+
+ifeq ($(arch),aarch64)
+	CC = aarch64-linux-gnu-gcc
+endif
 
 ifeq ($(debug),1)
 	CFLAGS += -DLOGGER_DEBUG -g -O0
