@@ -70,6 +70,35 @@ jobs:
           SHORT_MSG=$(git log -1 --pretty=%s)
           echo "short_msg=$SHORT_MSG" >> $GITHUB_OUTPUT
 
+      - name: Package Linux Artifacts
+        run: |
+          mkdir -p release/linux
+          cp build/* release/linux/
+          cd release/linux
+          tar czf ../../logger-linux-${{ github.ref_name }}.tar.gz *
+          cd ../..
+
+      - name: Package Windows Artifacts
+        run: |
+          mkdir release/windows
+          copy build\*.dll release\windows\
+          copy build\*.lib release\windows\
+          copy build\*.h release\windows\
+          powershell Compress-Archive -Path release/windows/* -DestinationPath logger-windows-${{ github.ref_name }}.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ github.ref_name }}"
+          body: |
+            ${{ steps.commit_msg.outputs.short_msg }}
+            See this commit: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            logger-linux-${{ github.ref_name }}.tar.gz
+            logger-windows-${{ github.ref_name }}.zip
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
