@@ -1,4 +1,5 @@
 # The Logger Library
+[![Logger Library](https://github.com/ilpenSE/logger/actions/workflows/build.yaml/badge.svg)](https://github.com/ilpenSE/logger/actions/workflows/build.yaml)
 
 - ![Language](https://img.shields.io/badge/language-C-blue)
 ![Language](https://img.shields.io/badge/safe%20in-C++-blue)
@@ -319,7 +320,7 @@ You can change time string, level and formatted message layout.
 - Default Layout: `time_str [level] msg`
 - Define `LOGGER_DONT_COLORIZE` if you dont want colorized stdout (in default formatter)
 - Note that time_str is evaluated at consumer (writer) thread. It may not show correct time when you call producer.
-- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1329)) and assign it in logger config. Don't forget newline char.
+- If you want to use custom log layout declare formatter function ([example in default](logger.h#L1121)) and assign it in logger config. Don't forget newline char.
 - Python and Rust has transpiler for you to get better developer experience.
 
 Latest usage in C:
@@ -355,7 +356,7 @@ lg_init(lg, "logs", conf);
 ```
 
 - And you can always add new level and new logger stream instance!
-- All you have to do is define macros [like this](logger.h#L408)
+- All you have to do is define macros [like this](logger.h#L256)
 - And define stream macro [like this](loggerstream.hpp#L75)
 - That's it, you can use your custom level
 
