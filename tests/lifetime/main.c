@@ -1,6 +1,5 @@
 #include <stdio.h>
-#define LOGGER_IMPLEMENTATION
-#include "logger.h"
+#include <logger.h>
 
 static Logger logger;
 

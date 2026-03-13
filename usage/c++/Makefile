@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -O2 -std=c++17 -Wall -Wextra -I../..
+CXXFLAGS := -O2 -std=c++17 -Wall -Wextra -I../.. -g
 TARGET := app
 SRC := main.cpp
 

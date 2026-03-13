@@ -9,6 +9,8 @@
 #include "logger.h"
 #include "loggerstream.hpp"
 
+static Logger lg;
+
 void hello() {
   std::cout << "====== LOGGER USAGE TEST ======\n";
   std::cout << "Choose a test:\n";
@@ -29,7 +31,7 @@ void log_something(int i) {
 
 void destruct_test() {
   sinfo << "Log before destruct";
-  if (!lg_destroy(nullptr)) {
+  if (!lg_destroy(&lg)) {
     std::cerr << "somehow logger destruct failed\n";
     return;
   }
@@ -68,14 +70,14 @@ void stress_test() {
   std::vector<std::thread> threads;
   threads.reserve(THREAD_COUNT);
 
-  auto start = std::chrono::high_resolution_clock::now(); // START CLOCK
+  auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < THREAD_COUNT; ++i) {
     threads.emplace_back(log_something, i);
   }
   for (auto& t : threads) {
     t.join();
   }
-  auto end = std::chrono::high_resolution_clock::now(); // END THE CLOCK
+  auto end = std::chrono::high_resolution_clock::now();
 
   // print elapsed time
   std::chrono::duration<double> diff = end - start;
@@ -108,8 +110,6 @@ int myFormatter(const char* time_str, LgLogLevel level,
 }
 
 int main() {
-  Logger* lg = lg_alloc();
-
   LoggerConfig conf = {};
   conf.localTime = true;
   conf.maxFiles = 10;
@@ -118,7 +118,7 @@ int main() {
   conf.logFormatter = myFormatter;
   lg_append_sink(&conf, stdout, LG_OUT_TTY);
 
-  if (!lg_init(lg, "logs", conf)) {
+  if (!lg_init(&lg, "logs", conf)) {
     std::cerr << "[MAIN] Logger init failed\n";
     return -1;
   }
@@ -162,11 +162,10 @@ int main() {
 exit:
   testFile.close();
   
-  if (!lg_destroy(nullptr)) {
+  if (!lg_destroy(&lg)) {
     std::cerr << "[MAIN] Logger destruct failed\n";
     return -1;
   }
 
-  lg_free(lg);
   return 0;
 }

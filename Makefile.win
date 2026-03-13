@@ -3,7 +3,7 @@ CFLAGS=/std:c11 /experimental:c11atomics /W4 /Fo:build\ /DLOGGER_IMPLEMENTATION 
 
 BUILD = build
 HEADER = logger.h
-DLL = $(BUILD)/logger.dll
+DLL = $(BUILD)\logger.dll
 
 !IF "$(debug)"=="1"
 CFLAGS=$(CFLAGS) /DLOGGER_DEBUG /Zi /Od /LDd /MDd
@@ -11,7 +11,7 @@ CFLAGS=$(CFLAGS) /DLOGGER_DEBUG /Zi /Od /LDd /MDd
 CFLAGS=$(CFLAGS) /O2 /MD /LD
 !ENDIF
 
-all: $(DLL)
+all: $(DLL) $(NOIMPL_HEADER)
 
 # Build folder directory making
 $(BUILD):

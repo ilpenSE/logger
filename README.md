@@ -9,7 +9,7 @@
 ![STB-Style](https://img.shields.io/badge/stb-single%20header-yellow?style=for-the-badge)
 
 - This Logger supports apple silicon, windows and unix or unix-like systems.
-- It requires minimum C11 version of C.
+- It requires minimum C11 or C++17 to compile.
 - You can build and generate `.so`, `.dll` and `.dylib` on your machine.
 
 - It does only have header files with implementation,
@@ -17,6 +17,8 @@ but if you define `LOGGER_IMPLEMENTATION` during compilation of header, you can 
 - It is written in purely C. Contains C++ stuff for extra options (not included in logger.h, logger.h is pure C)
 - Since it is written in C, you can port this library every language supports C FFI (most of them).
 You can compile this single header and turn it into shared object file.
+- If you don't want to use C11, generate library and use no-implementation header that is automatically generated in Makefile.
+(Windows one doesn't generate because yeah)
 
 ## Quick Links
 
@@ -24,6 +26,7 @@ You can compile this single header and turn it into shared object file.
 - [C++ Stream (<<) support](./loggerstream.hpp)
 - [1M Logs Test](tests/stress)
 - [Usage in C](usage/c)
+- [Usage in C89](usage/c89)
 - [Usage in C++](usage/c++)
 - [Usage in Python](usage/python)
 - [Usage in Rust](usage/rust)
@@ -224,7 +227,6 @@ but you can change it in config. To see in where it dropped, you can define
 This is atomic because both of the sides reads/writes it.
 - To avoid false sharing we aligned head and tail and ensured that these two going into different cachelines.
 - I also aligned isAlive to avoid false sharing also.
-- But I don't check cache ping-pong. (v4.0-rc1)
 - Why PPR (pop-process-payload) function (`lgi_ppr`) exists because pop does not release that slot
 Releasing that slot marks that slot empty and can be overwritable. (Not length == 0 check anymore)
 - In block policy, producer will adaptively waits until there's empty space in ring buffer.
@@ -242,12 +244,35 @@ Time per log call estimately is 35 nanoseconds. And I remove the stderr sink thi
 it will highly increases the speed but it didn't (it's ~55 ns). Instead, it ran slower than before.
 I thought this and I describe it like this:
 
-If you provide stderr sink, consumer thread will significantly slows down. (like 2 times slower)
+If you provide stderr sink, consumer thread will significantly slows down. (like 4 times slower)
 And, our lock-free approach seems like threads won't block each other. Yes, it doesn't but
 consumer thread and producer threads depend on each other because of the MPSC fixed-size
 ring buffer. If consumer is so slow and producer keeps pushing, ring buffer is mostly full and
 this causes early-return in producer and creates a fake speed perception.
-I checked dropped log count and it's like +800K in drop with stderr situation. This proofs my thought.
+I checked dropped log count and it's like +900K in drop with stderr situation. This proofs my thought:
+
+```
+(in tests/stress)
+❯ ./app drop true 2> /dev/null
+Is stderr?: YES
+Log Policy: Drop
+Dropped: 967413 logs
+Elapsed: 65322363 ns
+Per log: 65.32 ns
+../../logger.h:530: [DEBUG/INFO]: Writer thread is exiting
+```
+
+### About lg_destroy
+
+As I said before, it does not manage your context struct's memory lifetime.
+You can allocate it on the stack, heap or global context.
+
+It is so dangerous that calling destroy while producer threads are still active will
+trigger race condition or Use-After-Destroy ([see this](./tests/lifetime/race.c#L34))
+
+And it's YOUR responsibility to manage init, push and destroy. The order
+MUST be first init, then push some messages finally destroy.
+(If you guarantee that the producers finished then you can call destroy safely)
 
 ## Sinks (since 4.0)
 

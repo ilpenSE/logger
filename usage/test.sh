@@ -17,6 +17,15 @@ test_c() {
   printf "$clr_title========== C Test END ==========$clr_rst\n"
 }
 
+# Test C89
+test_c89() {
+  printf "$clr_title========== Testing C89 ==========$clr_rst\n"
+  cd c89
+  make && ./app
+  cd ..
+  printf "$clr_title========== C89 Test END ==========$clr_rst\n"
+}
+
 # Test Python
 test_python() {
   printf "$clr_title========== Testing Python ==========$clr_rst\n"
@@ -47,9 +56,10 @@ test_cpp() {
 # Test all cases
 test_all() {
   test_c &&
+    test_c89 &&
     test_python &&
-    test_cpp &&
-    test_rust
+    test_rust &&
+    test_cpp
 }
 
 case $1 in
@@ -59,6 +69,8 @@ case $1 in
     test_rust ;;
   c)
     test_c ;;
+  c89)
+    test_c89 ;;
   py | python)
     test_python ;;
   all)

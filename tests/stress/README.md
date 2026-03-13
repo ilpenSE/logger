@@ -14,24 +14,27 @@
 
 # Results on my machine
 
-- With 16 GiB RAM, Intel Core i5-8500 6 Cores, 4.0 GHz and 100 runs in a row:
+- With 16 GiB RAM, Intel Core i5-8500 6 Cores, 4.0 GHz, x86_64
+- Compiled with GCC, on GNU/Linux:
 
+```
 +--------------------+--------------------+--------------------+
-| Per Log (NS)       | WITH stderr sink   | WITHOUT stderr sink |
+| Per Log (NS)       | WITH stderr sink   | WITHOUT stderr sink|
 +--------------------+--------------------+--------------------+
-| Drop Policy       | (100 runs)         | (100 runs)         |
-| Minimum            | 35.34 ns           | 47.00 ns           |
-| Maximum            | 83.85 ns           | 56.88 ns           |
-| Average            | 37.24 ns           | 51.96 ns           |
-| Median             | 36.09 ns           | 51.88 ns           |
-| Std Dev            | 4.91 ns            | 2.07 ns            |
+| Drop Policy        | (1000 runs)        | (1000 runs)        |
+| Minimum            | 23.27 ns           | 37.55 ns           |
+| Maximum            | 30.90 ns           | 65.29 ns           |
+| Average            | 24.06 ns           | 45.67 ns           |
+| Median             | 23.97 ns           | 45.23 ns           |
+| Std Dev            | 0.68 ns            | 2.64 ns            |
 +--------------------+--------------------+--------------------+
-| Block Policy       | (100 runs)         | (100 runs)         |
-| Minimum            | 524.55 ns          | 149.35 ns          |
-| Maximum            | 593.15 ns          | 204.41 ns          |
-| Average            | 539.66 ns          | 155.86 ns          |
-| Median             | 530.87 ns          | 153.83 ns          |
-| Std Dev            | 17.17 ns           | 7.25 ns            |
+| Block Policy       | (1000 runs)        | (1000 runs)        |
+| Minimum            | 798.36 ns          | 139.01 ns          |
+| Maximum            | 865.24 ns          | 152.71 ns          |
+| Average            | 810.36 ns          | 145.07 ns          |
+| Median             | 809.72 ns          | 144.94 ns          |
+| Std Dev            | 5.66 ns            | 2.33 ns            |
 +--------------------+--------------------+--------------------+
+```
 
 - NOTE: Block policy does not drop any log, producer will block the main thread
