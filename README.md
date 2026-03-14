@@ -27,10 +27,11 @@ You can compile this single header and turn it into shared object file.
 - [C++ Stream (<<) support](./loggerstream.hpp)
 - [1M Logs Test](tests/stress)
 - [Usage in C](usage/c)
-- [Usage in C89](usage/c89)
 - [Usage in C++](usage/c++)
-- [Usage in Python](usage/python)
+- [Usage in Go](usage/go)
 - [Usage in Rust](usage/rust)
+- [Usage in C89](usage/c89)
+- [Usage in Python](usage/python)
 - [Header-only in C++, exported via C ABI (Deprecated)](https://github.com/ilpenSE/logger/tree/deprecated)
 
 # Library Linking/Usage

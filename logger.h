@@ -154,11 +154,7 @@ typedef struct {
 
 /* portable printf-format style checker (only available on gcc and clang) */
 #if defined(__clang__) || defined(__GNUC__)
-  #ifdef __cplusplus
-    #define PRINTF_LIKE(fmt, args) [[gnu::format(printf, fmt, args)]]
-  #else
-    #define PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
-  #endif
+  #define PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
 #else
   #define PRINTF_LIKE(fmt, args)
 #endif
@@ -906,14 +902,13 @@ int lg_get_time_str(Logger* inst, char* buf)
   long millis = st.wMilliseconds;
 #else
 
-#ifdef LOGGER_GET_REAL_TIME
-  // get exact time (performs syscall)
   struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-#else
-  // get coarse time - much more efficient
-  struct timespec ts;
+#if defined(CLOCK_REALTIME_COARSE) && !defined(LOGGER_GET_REAL_TIME)
+  // get coarse time - much more efficient (Linux only)
   clock_gettime(CLOCK_REALTIME_COARSE, &ts);
+#else
+  // get exact time (macOS and other platforms)
+  clock_gettime(CLOCK_REALTIME, &ts);
 #endif
 
   if (ts.tv_sec != inst->cached_sec) {

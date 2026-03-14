@@ -1,80 +1,48 @@
 #!/bin/bash
 
-clr_title="\e[1;36m"
+clr_aqua="\e[1;36m"
 clr_rst="\e[0m"
+clr_red="\e[1;31m"
+clr_title="\e[1;35m"
 
-printf "${clr_title}Compiling library...$clr_rst\n"
+printf "${clr_aqua}Compiling library...$clr_rst\n"
 cd ..
 make
 cd usage
 
-# Test C
-test_c() {
-  printf "$clr_title========== Testing C ==========$clr_rst\n"
-  cd c
-  make && ./app
+test_lang() {
+  lang=$1
+  printf "$clr_title========== Testing ${lang^} ==========$clr_rst\n"
+  cd $lang
+  case $lang in
+    c | c89 | c++ | cpp)
+      make && ./app ;;
+    python | py)
+      python main.py ;;
+    go)
+      make test &&
+        make run ;;
+    rust)
+      cargo run ;;
+    *)
+      echo -e "$clr_red[ERROR]$clr_rst Unkown usage." ;;
+  esac
   cd ..
-  printf "$clr_title========== C Test END ==========$clr_rst\n"
-}
-
-# Test C89
-test_c89() {
-  printf "$clr_title========== Testing C89 ==========$clr_rst\n"
-  cd c89
-  make && ./app
-  cd ..
-  printf "$clr_title========== C89 Test END ==========$clr_rst\n"
-}
-
-# Test Python
-test_python() {
-  printf "$clr_title========== Testing Python ==========$clr_rst\n"
-  cd python
-  python main.py # Activate an env with cffi installed
-  cd ..
-  printf "$clr_title========== Python Test END ==========$clr_rst\n"
-}
-
-# Test Rust
-test_rust() {
-  printf "$clr_title========== Testing Rust ==========$clr_rst\n"
-  cd rust
-  cargo run
-  cd ..
-  printf "$clr_title========== Rust Test END ==========$clr_rst\n"
-}
-
-# Test C++
-test_cpp() {
-  printf "$clr_title========== Testing C++ ==========$clr_rst\n"
-  cd c++
-  make && ./app
-  cd ..
-  printf "$clr_title========== C++ Test END ==========$clr_rst\n"
+  printf "$clr_title========== Tested ${lang^} ==========$clr_rst\n"
 }
 
 # Test all cases
 test_all() {
-  test_c &&
-    test_c89 &&
-    test_python &&
-    test_rust &&
-    test_cpp
+  test_lang c &&
+    test_lang go &&
+    test_lang c89 &&
+    test_lang rust &&
+    test_lang python &&
+    test_lang cpp
 }
 
-case $1 in
-  cpp | c++)
-    test_cpp ;;
-  rust)
-    test_rust ;;
-  c)
-    test_c ;;
-  c89)
-    test_c89 ;;
-  py | python)
-    test_python ;;
-  all)
-    test_all ;;
-  *)
-    echo "Unkown option." ;;
-esac
+if [ "$1" ==  "all" ]; then
+  test_all
+else
+  test_lang $1
+fi

@@ -11,34 +11,135 @@ on:
       - master
 
 jobs:
-  build-linux:
+  build-linux-x86_64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build with GCC
-        run: make
-
+        run: make arch=x86_64
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: logger-linux
+          name: logger-linux-x86_64
           path: build/
 
-  build-windows:
+  build-windows-msvc:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
-
       - name: Build with MSVC
         shell: cmd
         run: nmake /f Makefile.win
-
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: logger-windows
+          name: logger-windows-msvc
+          path: build/
+
+  build-linux-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM64 cross compiler
+        run: sudo apt install -y gcc-aarch64-linux-gnu
+      - name: Build with GCC (ARM64)
+        run: make arch=aarch64
+      - name: Upload Linux ARM64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-linux-aarch64
+          path: build/
+
+  build-macos-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osxcross dependencies
+        run: sudo apt install -y clang cmake libxml2-dev libssl-dev libbz2-dev zlib1g-dev xz-utils libstdc++-14-dev
+      - name: Cache osxcross
+        uses: actions/cache@v4
+        with:
+          path: /opt/osxcross
+          key: osxcross-${{ runner.os }}-sdk26.1
+      - name: Setup osxcross
+        run: |
+          git clone https://github.com/tpoechtrager/osxcross /tmp/osxcross
+          # SDK'yı bir yere host etmen lazım, örnek:
+          curl -L "https://github.com/SENIN_REPO/releases/download/sdk/MacOSX26.1.sdk.tar.xz" \
+            -o /tmp/osxcross/tarballs/MacOSX26.1.sdk.tar.xz
+          cd /tmp/osxcross && UNATTENDED=1 ./build.sh
+          sudo mv /tmp/osxcross/target /opt/osxcross
+      - name: Build macOS x86_64
+        run: |
+          export PATH="/opt/osxcross/bin:$PATH"
+          export LD_LIBRARY_PATH="/opt/osxcross/lib:$LD_LIBRARY_PATH"
+          make os=osx arch=x86_64
+      - name: Upload macOS x86_64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-macos-x86_64
+          path: build/
+
+  build-macos-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osxcross dependencies
+        run: sudo apt install -y clang cmake libxml2-dev libssl-dev libbz2-dev zlib1g-dev xz-utils libstdc++-14-dev
+      - name: Cache osxcross
+        uses: actions/cache@v4
+        with:
+          path: /opt/osxcross
+          key: osxcross-${{ runner.os }}-sdk26.1
+      - name: Setup osxcross
+        run: |
+          git clone https://github.com/tpoechtrager/osxcross /tmp/osxcross
+          curl -L "https://github.com/SENIN_REPO/releases/download/sdk/MacOSX26.1.sdk.tar.xz" \
+            -o /tmp/osxcross/tarballs/MacOSX26.1.sdk.tar.xz
+          cd /tmp/osxcross && UNATTENDED=1 ./build.sh
+          sudo mv /tmp/osxcross/target /opt/osxcross
+      - name: Build macOS ARM64
+        run: |
+          export PATH="/opt/osxcross/bin:$PATH"
+          export LD_LIBRARY_PATH="/opt/osxcross/lib:$LD_LIBRARY_PATH"
+          make os=osx
+      - name: Upload macOS ARM64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-macos-aarch64
+          path: build/
+
+  build-windows-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MinGW
+        run: sudo apt install -y gcc-mingw-w64-x86-64
+      - name: Build Windows x86_64
+        run: make os=windows arch=x86_64
+      - name: Upload Windows x86_64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-windows-x86_64
+          path: build/
+
+  build-windows-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install llvm-mingw
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250114/llvm-mingw-20250114-ucrt-ubuntu-20.04-x86_64.tar.xz
+          tar -xf llvm-mingw-*.tar.xz
+          sudo mv llvm-mingw-* /opt/llvm-mingw
+      - name: Build Windows ARM64
+        run: |
+          export PATH="/opt/llvm-mingw/bin:$PATH"
+          make os=windows arch=aarch64
+      - name: Upload Windows ARM64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-windows-aarch64
           path: build/

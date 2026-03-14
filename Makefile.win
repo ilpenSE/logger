@@ -1,3 +1,6 @@
+# This Makefile works for only MSVC and Windows
+# Ran this with "nmake" like this: nmake /f Makefile.win
+
 CC=cl
 CFLAGS=/std:c11 /experimental:c11atomics /W4 /Fo:build\ /DLOGGER_IMPLEMENTATION /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT
 
@@ -13,11 +16,9 @@ CFLAGS=$(CFLAGS) /O2 /MD /LD
 
 all: $(DLL) $(NOIMPL_HEADER)
 
-# Build folder directory making
 $(BUILD):
 	if not exist $(BUILD) mkdir $(BUILD)
 
-# Generating dll
 $(DLL): $(HEADER) $(BUILD)
 	$(CC) $(CFLAGS) /Fe:$(DLL) /TC $(HEADER)
 
