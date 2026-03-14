@@ -8,9 +8,23 @@ clr_rst="\e[0m"
 mkdir -p artifacts
 
 generate_headers() {
+  awk ' \
+    BEGIN { \
+      print "/*"; \
+      print "  This file was generated automatically"; \
+      print "  It doesnt have implementation"; \
+      print "  Compatible with >=C89 or >=C++98"; \
+      print "*/"; \
+      print ""; \
+    } \
+    /IMPLEMENTATION BEGIN/ {skip=1} \
+    /IMPLEMENTATION END/ {skip=0; next} \
+    !skip \
+  ' logger.h > logger_noimpl.h
   headers_zip="c-c++_headers"
-  tar -czf artifacts/$headers_zip.tar.gz logger.h loggerstream.hpp > /dev/null 2>&1
-  zip artifacts/$headers_zip.zip logger.h loggerstream.hpp > /dev/null 2>&1
+  tar -czf artifacts/$headers_zip.tar.gz logger.h logger_noimpl.h loggerstream.hpp > /dev/null 2>&1
+  zip artifacts/$headers_zip.zip logger.h logger_noimpl.h loggerstream.hpp > /dev/null 2>&1
+  rm -f logger_noimpl.h
 }
 
 verify_binary() {
