@@ -5,6 +5,7 @@ clr_green="\e[1;32m"
 clr_red="\e[1;31m"
 clr_gold="\e[1;38;2;255;165;0m"
 clr_rst="\e[0m"
+rm -rf artifacts build
 mkdir -p artifacts
 
 generate_headers() {
@@ -40,6 +41,24 @@ verify_binary() {
   fi
 }
 
+check_compiler_for() {
+  local os=$1
+  local arch=$2
+  local compiler
+  case "$os" in
+    msvc)   compiler="cl" ;;
+    osx)    [ "$arch" = "aarch64" ] && compiler="aarch64-apple-darwin25.1-clang" || compiler="x86_64-apple-darwin25.1-clang" ;;
+    mingw)  [ "$arch" = "aarch64" ] && compiler="aarch64-w64-mingw32-gcc" || compiler="x86_64-w64-mingw32-gcc" ;;
+    linux)  [ "$arch" = "aarch64" ] && compiler="aarch64-linux-gnu-gcc" || compiler="gcc" ;;
+  esac
+
+  if ! command -v "$compiler" &> /dev/null; then
+    echo -e "==> $clr_gold[WARNING]$clr_rst Skipping $os $arch: $clr_gold$compiler$clr_rst not found"
+    return 1
+  fi
+  return 0
+}
+
 build() {
   local os=$1
   local arch=$2
@@ -47,6 +66,7 @@ build() {
 
   if [ "$os" = "msvc" ]; then
     echo "==> Building MSVC x86_64"
+    check_compiler_for msvc x86_64 || return
     nmake /a /f Makefile.win > /dev/null 2>&1
     cd $proot/build
     verify_binary logger.dll "x86-64"
@@ -55,7 +75,8 @@ build() {
   fi
 
   echo "==> Building $os $arch"
-  make -B os=$os arch=$arch > /dev/null 2>&1
+  check_compiler_for $os $arch || return
+  make -B os=$os arch=$arch > /dev/null
   cd $proot/build
 
   local artifact_name="${arch}-${os}"
@@ -65,7 +86,7 @@ build() {
       tar -czf ../artifacts/${artifact_name}.tar.gz liblogger.so liblogger.a logger.o logger.h > /dev/null 2>&1
       ;;
     mingw)
-      verify_binary liblogger.dll "$( [ "$arch" = "aarch64" ] && echo "aarch64" || echo "x86-64" )"
+      verify_binary liblogger.dll "$( [ "$arch" = "aarch64" ] && echo "arm64" || echo "x86-64" )"
       zip ../artifacts/${artifact_name}.zip liblogger.dll liblogger.a logger.o logger.h > /dev/null 2>&1
       ;;
     osx)

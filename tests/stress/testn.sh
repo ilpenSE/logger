@@ -14,8 +14,7 @@ printf "Will run ${bash_baqua}$RUNS$bash_rst times in a row\n"
 > results.txt
 
 counter=1
-while [ $counter -le $RUNS ]
-do
+while [ $counter -le $RUNS ]; do
   printf "Running $bash_byellow$counter$bash_rst..."
   ./benchmark.sh
   printf " ${bash_bgreen}[OK]$bash_rst\n"

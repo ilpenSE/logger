@@ -100,6 +100,26 @@ typedef enum {
   /* Add more levels here */
 } LgLogLevel;
 
+/* Log with an explicit logger instance */
+#define lg_logi(instance, level, fmt, ...) \
+  lg_vlog_(instance, level, fmt, ##__VA_ARGS__)
+
+#define lg_infoi(instance, fmt, ...) \
+  lg_logi(instance, LG_INFO, fmt, ##__VA_ARGS__)
+#define lg_errori(instance, fmt, ...) \
+  lg_logi(instance, LG_ERROR, fmt, ##__VA_ARGS__)
+#define lg_warni(instance, fmt, ...) \
+  lg_logi(instance, LG_WARNING, fmt, ##__VA_ARGS__)
+
+#define lg_log(level, fmt, ...) \
+  lg_logi(lg_get_active_instance(), level, fmt, ##__VA_ARGS__)
+#define lg_info(fmt, ...) lg_log(LG_INFO, fmt, ##__VA_ARGS__)
+#define lg_error(fmt, ...) lg_log(LG_ERROR, fmt, ##__VA_ARGS__)
+#define lg_warn(fmt, ...) lg_log(LG_WARNING, fmt, ##__VA_ARGS__)
+
+/* you can add your custom level like this: */
+#define lg_custom(fmt, ...) lg_log(LG_CUSTOM, fmt, ##__VA_ARGS__)
+
 typedef enum {
   LG_DROP = 0,
   LG_BLOCK = 1,
@@ -231,26 +251,6 @@ LOGGERDEF FILE* lg_get_stdout();
 LOGGERDEF FILE* lg_get_stderr();
 LOGGERDEF FILE* lg_fopen(const char* path);
 
-/* Log with an explicit logger instance */
-#define lg_logi(instance, level, fmt, ...) \
-  lg_vlog_(instance, level, fmt, ##__VA_ARGS__)
-
-#define lg_infoi(instance, fmt, ...) \
-  lg_logi(instance, LG_INFO, fmt, ##__VA_ARGS__)
-#define lg_errori(instance, fmt, ...) \
-  lg_logi(instance, LG_ERROR, fmt, ##__VA_ARGS__)
-#define lg_warni(instance, fmt, ...) \
-  lg_logi(instance, LG_WARNING, fmt, ##__VA_ARGS__)
-
-#define lg_log(level, fmt, ...) \
-  lg_logi(lg_get_active_instance(), level, fmt, ##__VA_ARGS__)
-#define lg_info(fmt, ...) lg_log(LG_INFO, fmt, ##__VA_ARGS__)
-#define lg_error(fmt, ...) lg_log(LG_ERROR, fmt, ##__VA_ARGS__)
-#define lg_warn(fmt, ...) lg_log(LG_WARNING, fmt, ##__VA_ARGS__)
-
-/* you can add your custom level like this: */
-#define lg_custom(fmt, ...) lg_log(LG_CUSTOM, fmt, ##__VA_ARGS__)
-
 #ifdef LOGGER_MINIFY_PREFIXES
 #define llog lg_log
 #define linfo lg_info
@@ -294,6 +294,7 @@ LOGGERDEF FILE* lg_fopen(const char* path);
 #define ATOMIC(T) _Atomic(T)
 #endif
 
+// DO NOT change these
 #define LOGGER_CACHE_LINE 64
 #define LOGGER_ALIGN alignas(LOGGER_CACHE_LINE)
 
@@ -308,6 +309,11 @@ typedef struct {
   LogPayload payload;
 } LogSlot;
 
+// Maximum amount of slots can be written at once
+#define LOGGER_MAX_BATCH 32
+
+// Size of ring buffer you can change it
+// but make sure that it is power of 2
 #define LOGGER_RING_SIZE 1024
 #define LOGGER_RING_MASK (LOGGER_RING_SIZE - 1)
 #if (LOGGER_RING_SIZE & LOGGER_RING_MASK) != 0
@@ -336,15 +342,9 @@ LOGGER_INTERNAL int lgi_def_format_msg(const char* time_str, LgLogLevel level,
                                       const char* msg, uint32_t needed, LgMsgPack pack);
 
 LOGGER_INTERNAL void lgi_queue_create(LogQueue* q);
-
-LOGGER_INTERNAL bool lgi_queue_pop(LogQueue* q, LogPayload** out, size_t* pos);
-
+LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch);
+LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos);
 LOGGER_INTERNAL void lgi_queue_release(LogQueue* q, size_t pos);
-
-// POP - PROCESS - RELEASE
-LOGGER_INTERNAL inline bool lgi_queue_ppr(Logger* inst, LogPayload** entry, size_t* pos);
-
-LOGGER_INTERNAL bool lgi_process_payload(Logger* inst, LogPayload* payload);
 
 LOGGER_INTERNAL void lgi_adaptive_wait(int* spins);
 
@@ -468,6 +468,7 @@ static int pthread_create(pthread_t* t, void* attr,
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 #include <dirent.h>
 #include <unistd.h>
 
@@ -526,18 +527,16 @@ struct Logger {
 // consumer func, writes entries on the ring to stdout or file
 LOGGER_INTERNAL void* lgi_consumer(void* arg) {
   Logger* inst = (Logger*)arg;
-  LogPayload* entry = NULL;
   int spins = 0;
-  size_t pos;
+  size_t start_pos = 0;
 
   while (atomic_load_explicit(&inst->isAlive, memory_order_acquire)) {
-    if (lgi_queue_ppr(inst, &entry, &pos)) spins = 0;
+    if (lgi_queue_ppr_batch(inst, &start_pos)) spins = 0;
     else lgi_adaptive_wait(&spins);
   }
 
-  // isAlive = false, drain remaining entries
-  while (lgi_queue_ppr(inst, &entry, &pos))
-    ;;
+  while (lgi_queue_ppr_batch(inst, &start_pos))
+    ;; // drain loop
 
   LG_DEBUG("Writer thread is exiting");
   return NULL;
@@ -1082,7 +1081,8 @@ void lg_str_format_into(LgString* s, const char* fmt, ...)
   }
 }
 
-void lg_str_write_into(LgString* s, const char* str) {
+void lg_str_write_into(LgString* s, const char* str)
+{
   if (!str || !s) return;
   size_t len = strlen(str);
   if (len == 0) return;
@@ -1091,26 +1091,6 @@ void lg_str_write_into(LgString* s, const char* str) {
   s->data[len - 1] = '\n';
   s->data[len] = '\0';
   s->len = len;
-}
-
-LOGGER_INTERNAL bool lgi_process_payload(Logger* inst, LogPayload* payload) {
-  char time_str[LOGGER_TIME_STR_SIZE];
-  if (!lg_get_time_str(inst, time_str)) return false;
-
-  LgMsgPack pack = {};
-  log_formatter_t formatter_fn = inst->customLogFunc ? inst->customLogFunc : lgi_def_format_msg;
-  if (!formatter_fn(time_str, payload->level, payload->msg, inst->out_needed, pack)) {
-    LG_DEBUG_ERR("Cannot format the message, dropping it!");
-    return false;
-  }
-
-  for (size_t i = 0; i < inst->sinks_count; i++) {
-    LgSink* s = &inst->sinks[i];
-    if (!s->file) continue;
-    LgString* str = &pack[s->type];
-    fwrite(str->data, sizeof(*str->data), str->len, s->file);
-  }
-  return true;
 }
 
 LOGGER_INTERNAL int lgi_def_format_msg(
@@ -1196,32 +1176,93 @@ LOGGER_INTERNAL void lgi_queue_create(LogQueue* q) {
   atomic_thread_fence(memory_order_seq_cst);
 }
 
-LOGGER_INTERNAL bool lgi_queue_pop(LogQueue* q, LogPayload** out, size_t* out_pos) {
-  size_t pos  = q->tail;
-  LogSlot* s  = lgi_slot_get(q, pos);
-  size_t seq = atomic_load_explicit(&s->seq, memory_order_acquire);
+LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch)
+{
+  size_t pos = q->tail;
+  size_t count = 0;
 
-  if (seq != pos + 1) {
-    return false; // not ready yet
+  while (count < max_batch) {
+    LogSlot* s = lgi_slot_get(q, pos + count);
+    size_t seq = atomic_load_explicit(&s->seq, memory_order_acquire);
+    if (seq != (pos + count + 1)) {
+      break; // not ready yet
+    }
+    count++;
   }
 
-  *out = &s->payload;
-  *out_pos = pos;
+  if (count > 0) {
+    *start_pos = pos;
+    q->tail = pos + count;
+  }
+  return count;
+}
 
-  q->tail = pos + 1;
+LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
+#ifdef _WIN32
+  size_t max_batches = 1;
+#else
+  size_t max_batches = LOGGER_MAX_BATCH;
+#endif
+  size_t count = lgi_queue_pop_batch(&inst->queue, start_pos, max_batches);
+  if (count == 0) return false;
+  char time_str[LOGGER_TIME_STR_SIZE];
+  log_formatter_t fn = inst->customLogFunc ? inst->customLogFunc : lgi_def_format_msg;
+
+#ifdef _WIN32
+  LgMsgPack pack = {};
+  LogSlot* s = lgi_slot_get(&inst->queue, *start_pos);
+  if (!lg_get_time_str(inst, time_str)) goto release;
+
+  if (!fn(time_str, s->payload.level, s->payload.msg, inst->out_needed, pack))
+    goto release;
+
+  for (size_t i = 0; i < inst->sinks_count; i++) {
+    LgSink* sk = &inst->sinks[i];
+    if (!sk->file) continue;
+    LgString* str = &pack[sk->type];
+    fwrite(str->data, sizeof(*str->data), str->len, sk->file);
+  }
+
+release:
+  lgi_queue_release(&inst->queue, *start_pos);
+
+#else
+  LgMsgPack msg_packs[LOGGER_MAX_BATCH];
+  struct iovec vecs[LOGGER_MAX_OUT_TYPES][LOGGER_MAX_BATCH];
+  int vec_counts[LOGGER_MAX_OUT_TYPES] = {0};
+
+  for (size_t i = 0; i < count; i++) {
+    size_t pos = *start_pos + i;
+    LogSlot* s = lgi_slot_get(&inst->queue, pos);
+
+    if (!lg_get_time_str(inst, time_str)) goto release;
+    if (!fn(time_str, s->payload.level, s->payload.msg, inst->out_needed, msg_packs[i]))
+      goto release;
+
+    for (size_t t = 0; t < LOGGER_MAX_OUT_TYPES; t++) {
+      if (msg_packs[i][t].len == 0) continue;
+      vecs[t][vec_counts[t]].iov_base = msg_packs[i][t].data;
+      vecs[t][vec_counts[t]].iov_len  = msg_packs[i][t].len;
+      vec_counts[t]++;
+    }
+
+  release:
+    lgi_queue_release(&inst->queue, pos);
+  }
+
+  for (size_t i = 0; i < inst->sinks_count; i++) {
+    LgSink* sk = &inst->sinks[i];
+    if (!sk->file || vec_counts[sk->type] == 0) continue;
+    writev(fileno(sk->file), vecs[sk->type], vec_counts[sk->type]);
+  }
+#endif
+
   return true;
 }
 
 LOGGER_INTERNAL void lgi_queue_release(LogQueue* q, size_t pos) {
   LogSlot* s = lgi_slot_get(q, pos);
   atomic_store_explicit(&s->seq, pos + LOGGER_RING_SIZE, memory_order_release);
-}
-
-LOGGER_INTERNAL inline bool lgi_queue_ppr(Logger* inst, LogPayload** entry, size_t* pos) {
-  if (!lgi_queue_pop(&inst->queue, entry, pos)) return false;
-  lgi_process_payload(inst, *entry);
-  lgi_queue_release(&inst->queue, *pos);
-  return true;
 }
 
 LOGGER_INTERNAL void lgi_adaptive_wait(int* spins) {

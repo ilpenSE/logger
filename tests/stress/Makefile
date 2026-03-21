@@ -1,12 +1,12 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -O2 -I../../ -ggdb
+CFLAGS := -Wall -Wextra -O2 -I../../
 
 TARGET := app
-SRC := stress.c
+SRC := main.c multithread.c singlethread.c
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) ../../logger.h
+$(TARGET): $(SRC) ../../logger.h utils.h
 	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 clean:
