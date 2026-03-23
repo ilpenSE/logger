@@ -1,10 +1,10 @@
 package logger
 
 /*
-#cgo CFLAGS: -I../../../
-#cgo LDFLAGS: -lpthread
-#define LOGGER_IMPLEMENTATION
+#cgo CFLAGS: -I../../../build
+#cgo LDFLAGS: -L../../../build -lpthread -l:liblogger.a
 #include <logger.h>
+#include <stddef.h>
 #include <stdlib.h>
 */
 import "C"

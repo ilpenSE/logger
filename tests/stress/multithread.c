@@ -20,7 +20,7 @@ void* thread_func(void* arg) {
 
   ThreadCtx* ctx = (ThreadCtx*)arg;
   for (int i = 0; i < LOG_COUNT_PER_THREAD; i++) {
-    if (!lg_info("Hello, World!"))
+    if (!lg_finfo("Hello, World!"))
       ctx->dropped += 1;
   }
   return NULL;

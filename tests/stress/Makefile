@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -O2 -I../../
+CFLAGS := -Wall -Wextra -O0 -ggdb -I../../
 
 TARGET := app
 SRC := main.c multithread.c singlethread.c

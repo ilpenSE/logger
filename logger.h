@@ -391,11 +391,13 @@ LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
 #endif
 
 #ifdef LOGGER_DEBUG
-#define LG_DEBUG_ERR(fmt, ...) do {                     \
+#define LG_DEBUG_ERR(fmt, ...)                          \
+  do {                                                  \
     fprintf(stderr, "%s:%d: [DEBUG/ERROR]: " fmt "\n",  \
             __FILE__, __LINE__, ##__VA_ARGS__);         \
   } while (0)
-#define LG_DEBUG(fmt, ...) do {                 \
+#define LG_DEBUG(fmt, ...)                      \
+  do {                                          \
     printf("%s:%d: [DEBUG/INFO]: " fmt "\n",    \
            __FILE__, __LINE__, ##__VA_ARGS__);  \
   } while (0)
@@ -415,6 +417,25 @@ LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
 #ifndef PATH_MAX
 #define PATH_MAX (MAX_PATH * 2)
 #endif
+
+struct iovec {
+  void  *iov_base;
+  size_t iov_len;
+};
+
+#ifndef ssize_t
+typedef intptr_t ssize_t;
+#endif
+
+static ssize_t lgi_writev(FILE* f, const struct iovec *iov, int iovcnt) {
+  ssize_t total = 0;
+  for (size_t i = 0; i < (size_t)iovcnt; i++) {
+    size_t written = fwrite(iov[i].iov_base, 1, iov[i].iov_len, f);
+    if (written < iov[i].iov_len) return -1;
+    total += written;
+  }
+  return total;
+}
 
 // Sleep() has terrible resolution (milliseconds)
 // But who uses winbloat for production-ready logger?
@@ -471,6 +492,10 @@ static int pthread_create(pthread_t* t, void* attr,
 #include <sys/uio.h>
 #include <dirent.h>
 #include <unistd.h>
+
+static ssize_t lgi_writev(FILE* f, const struct iovec *iov, int iovcnt) {
+  return writev(fileno(f), iov, iovcnt);
+}
 
 // sleep for us microseconds
 #define LOGGER_SLEEP(us)                                                \
@@ -723,16 +748,18 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
       switch(inst->logPolicy) {
       case LG_BLOCK:
         lgi_adaptive_wait(&spins);
+        pos = atomic_load_explicit(&q->head, memory_order_relaxed);
         break;
       case LG_PRIORITY_BASED:
         if (level == LG_ERROR) {
           lgi_adaptive_wait(&spins);
+          pos = atomic_load_explicit(&q->head, memory_order_relaxed);
           break;
         } else return false;
       default:
         return false;
       }
-    } else { // pos stale, re-read
+    } else {
       pos = atomic_load_explicit(&q->head, memory_order_relaxed);
     }
   }
@@ -1003,7 +1030,6 @@ LOGGER_INTERNAL int lgi_count_logs_and_get_oldest(const char* path, char* oldest
 
   FindClose(h);
 #else
-  LG_UNUSED(opsz);
   DIR* dir = opendir(path);
   if (!dir) return -1;
   time_t oldest_mtime = LLONG_MAX;
@@ -1019,7 +1045,7 @@ LOGGER_INTERNAL int lgi_count_logs_and_get_oldest(const char* path, char* oldest
     count += 1;
     char full_path[PATH_MAX];
     int n = snprintf(full_path, sizeof(full_path), "%s/%s", path, name);
-    if (n < 0 || (size_t)n >= sizeof(full_path)) continue;
+    if (n < 0 || (size_t)n >= sizeof(full_path) || (size_t)n >= opsz) continue;
     struct stat st;
     if (stat(full_path, &st) == 0 && st.st_mtime < oldest_mtime) {
       oldest_mtime = st.st_mtime;
@@ -1169,7 +1195,7 @@ LOGGER_INTERNAL void lgi_queue_create(LogQueue* q) {
   atomic_store_explicit(&q->head, 0, memory_order_relaxed);
 
   for (size_t i = 0; i < LOGGER_RING_SIZE; i++) {
-    LogSlot* s = (LogSlot*)(q->slots + i * LOGGER_RING_STRIDE);
+    LogSlot* s = lgi_slot_get(q, i);
     atomic_store_explicit(&s->seq, i, memory_order_relaxed);
   }
 
@@ -1198,46 +1224,25 @@ LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_
 }
 
 LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
-#ifdef _WIN32
-  size_t max_batches = 1;
-#else
-  size_t max_batches = LOGGER_MAX_BATCH;
-#endif
-  size_t count = lgi_queue_pop_batch(&inst->queue, start_pos, max_batches);
+  size_t count = lgi_queue_pop_batch(&inst->queue, start_pos, LOGGER_MAX_BATCH);
   if (count == 0) return false;
   char time_str[LOGGER_TIME_STR_SIZE];
   log_formatter_t fn = inst->customLogFunc ? inst->customLogFunc : lgi_def_format_msg;
 
-#ifdef _WIN32
-  LgMsgPack pack = {};
-  LogSlot* s = lgi_slot_get(&inst->queue, *start_pos);
-  if (!lg_get_time_str(inst, time_str)) goto release;
-
-  if (!fn(time_str, s->payload.level, s->payload.msg, inst->out_needed, pack))
-    goto release;
-
-  for (size_t i = 0; i < inst->sinks_count; i++) {
-    LgSink* sk = &inst->sinks[i];
-    if (!sk->file) continue;
-    LgString* str = &pack[sk->type];
-    fwrite(str->data, sizeof(*str->data), str->len, sk->file);
-  }
-
-release:
-  lgi_queue_release(&inst->queue, *start_pos);
-
-#else
   LgMsgPack msg_packs[LOGGER_MAX_BATCH];
   struct iovec vecs[LOGGER_MAX_OUT_TYPES][LOGGER_MAX_BATCH];
   int vec_counts[LOGGER_MAX_OUT_TYPES] = {0};
 
   for (size_t i = 0; i < count; i++) {
+    LogPayload payload = {};
     size_t pos = *start_pos + i;
-    LogSlot* s = lgi_slot_get(&inst->queue, pos);
+    LogSlot* gs = lgi_slot_get(&inst->queue, pos);
+    memcpy(&payload, &gs->payload, sizeof(LogPayload));
+    lgi_queue_release(&inst->queue, pos);
 
-    if (!lg_get_time_str(inst, time_str)) goto release;
-    if (!fn(time_str, s->payload.level, s->payload.msg, inst->out_needed, msg_packs[i]))
-      goto release;
+    if (!lg_get_time_str(inst, time_str)) continue;
+    if (!fn(time_str, payload.level, payload.msg, inst->out_needed, msg_packs[i]))
+      continue;
 
     for (size_t t = 0; t < LOGGER_MAX_OUT_TYPES; t++) {
       if (msg_packs[i][t].len == 0) continue;
@@ -1245,18 +1250,13 @@ release:
       vecs[t][vec_counts[t]].iov_len  = msg_packs[i][t].len;
       vec_counts[t]++;
     }
-
-  release:
-    lgi_queue_release(&inst->queue, pos);
   }
 
   for (size_t i = 0; i < inst->sinks_count; i++) {
     LgSink* sk = &inst->sinks[i];
     if (!sk->file || vec_counts[sk->type] == 0) continue;
-    writev(fileno(sk->file), vecs[sk->type], vec_counts[sk->type]);
+    lgi_writev(sk->file, vecs[sk->type], vec_counts[sk->type]);
   }
-#endif
-
   return true;
 }
 

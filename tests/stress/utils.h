@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define THREAD_COUNT 10
-#define LOG_COUNT_PER_THREAD 1000
+#define LOG_COUNT_PER_THREAD 100000
 #define LOG_COUNT_SINGLE 1000000
 
 #define CLOCK_START(start) clock_gettime(CLOCK_MONOTONIC, &(start));

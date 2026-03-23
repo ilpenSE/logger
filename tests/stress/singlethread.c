@@ -6,11 +6,15 @@
 
 TestResult single_thread_test(Logger* lg) {
   UNUSED(lg);
+
+  for (int i = 0; i < 10000; i++)
+    lg_info("warmup");
+
   struct timespec start, end;
   size_t dropped = 0;
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (int i = 0; i < LOG_COUNT_SINGLE; i++) {
-    if (!lg_info("Hello, World!"))
+    if (!lg_finfo("Hello, World!"))
       dropped += 1;
   }
   clock_gettime(CLOCK_MONOTONIC, &end);

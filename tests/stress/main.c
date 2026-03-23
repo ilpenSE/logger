@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
   LoggerConfig cfg = {
     .localTime = true,
     .maxFiles = 5,
-    .generateDefaultFile = true,
+    .generateDefaultFile = false,
     .logPolicy = policy,
     .logFormatter = NULL,
   };

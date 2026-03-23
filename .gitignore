@@ -18,3 +18,4 @@ jna.jar
 *.log
 *.txt
 artifacts
+*.data
