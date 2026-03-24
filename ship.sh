@@ -5,7 +5,6 @@ clr_green="\e[1;32m"
 clr_red="\e[1;31m"
 clr_gold="\e[1;38;2;255;165;0m"
 clr_rst="\e[0m"
-rm -rf artifacts build
 mkdir -p artifacts
 
 generate_headers() {
@@ -59,54 +58,54 @@ check_compiler_for() {
   return 0
 }
 
+source setup_cc
+
 build() {
   local os=$1
   local arch=$2
   cd $proot
-
-  if [ "$os" = "msvc" ]; then
-    echo "==> Building MSVC x86_64"
-    check_compiler_for msvc x86_64 || return
-    nmake /a /f Makefile.win > /dev/null 2>&1
-    cd $proot/build
-    verify_binary logger.dll "x86-64"
-    zip ../artifacts/x86_64-windows.zip logger.h logger.lib logger.exp logger.dll logger.obj > /dev/null 2>&1
-    return
-  fi
+  rm -rf build
 
   echo "==> Building $os $arch"
+  setup_cc $os $arch
   check_compiler_for $os $arch || return
-  make -B os=$os arch=$arch > /dev/null
+  if [ "$os" = "msvc" ]; then
+    nmake /a /f Makefile.win > /dev/null 2>&1
+  else
+    make -B os=$os arch=$arch > /dev/null 2>&1
+  fi
   cd $proot/build
 
   local artifact_name="${arch}-${os}"
   case "$os" in
     linux)
       verify_binary liblogger.so "$( [ "$arch" = "aarch64" ] && echo "aarch64" || echo "x86-64" )"
-      tar -czf ../artifacts/${artifact_name}.tar.gz liblogger.so liblogger.a logger.o logger.h > /dev/null 2>&1
+      tar -czf ../artifacts/${artifact_name}.tar.gz *logger.* > /dev/null 2>&1
       ;;
     mingw)
       verify_binary liblogger.dll "$( [ "$arch" = "aarch64" ] && echo "arm64" || echo "x86-64" )"
-      zip ../artifacts/${artifact_name}.zip liblogger.dll liblogger.a logger.o logger.h > /dev/null 2>&1
+      zip ../artifacts/${artifact_name}.zip *logger.* > /dev/null 2>&1
+      ;;
+    msvc)
+      verify_binary logger.dll "$( [ "$arch" = "aarch64" ] && echo "arm64" || echo "x86-64" )"
+      zip ../artifacts/${artifact_name}.zip *logger.* > /dev/null 2>&1
       ;;
     osx)
       verify_binary liblogger.dylib "$( [ "$arch" = "aarch64" ] && echo "arm64" || echo "x86_64" )"
-      tar -czf ../artifacts/${artifact_name}.tar.gz liblogger.dylib liblogger.a logger.o logger.h > /dev/null 2>&1
+      tar -czf ../artifacts/${artifact_name}.tar.gz *logger.* > /dev/null 2>&1
       ;;
   esac
 }
 
 generate_binaries() {
-  # x86_64
-  build linux  x86_64
-  build msvc   x86_64
-  build mingw  x86_64
-  build osx    x86_64
+  oses=("linux" "msvc" "mingw" "osx")
+  archs=("aarch64" "x86_64")
 
-  # aarch64
-  build linux  aarch64
-  build osx    aarch64
-  build mingw  aarch64
+  for os in "${oses[@]}"; do
+    for arch in "${archs[@]}"; do
+      build $os $arch
+    done
+  done
 
   cd $proot
   make clean > /dev/null 2>&1

@@ -21,7 +21,7 @@ jobs:
           name: logger-linux-x86_64
           path: build/
 
-  build-windows-msvc:
+  build-windows-msvc-x86_64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,24 @@ jobs:
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: logger-windows-msvc
+          name: logger-windows-msvc-x86_64
+          path: build/
+
+  build-windows-msvc-aarch64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        - with:
+            arch: arm64
+      - name: Build with MSVC ARM64
+        shell: cmd
+        run: nmake /f Makefile.win
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: logger-windows-msvc-aarch64
           path: build/
 
   build-linux-aarch64:
@@ -116,7 +133,7 @@ jobs:
       - name: Install MinGW
         run: sudo apt install -y gcc-mingw-w64-x86-64
       - name: Build Windows x86_64
-        run: make os=windows arch=x86_64
+        run: make os=mingw arch=x86_64
       - name: Upload Windows x86_64 Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -136,7 +153,7 @@ jobs:
       - name: Build Windows ARM64
         run: |
           export PATH="/opt/llvm-mingw/bin:$PATH"
-          make os=windows arch=aarch64
+          make os=mingw arch=aarch64
       - name: Upload Windows ARM64 Artifacts
         uses: actions/upload-artifact@v4
         with:
